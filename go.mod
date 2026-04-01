@@ -3,6 +3,7 @@ module github.com/cocoonstack/cocoon-webhook
 go 1.25.0
 
 require (
+	github.com/cocoonstack/cocoon-operator v0.1.2-0.20260401142114-497adc0d4d16
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
 	k8s.io/client-go v0.35.3

@@ -28,13 +28,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cocoonstack/cocoon-operator/pkg/k8sutil"
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 )
 
@@ -58,7 +57,7 @@ type jsonPatch struct {
 // --- entry point ---
 
 func main() {
-	config, err := loadKubeConfig()
+	config, err := k8sutil.LoadConfig()
 	if err != nil {
 		klog.Fatalf("k8s config: %v", err)
 	}
@@ -473,13 +472,6 @@ func pickCocoonNode() *admissionv1.AdmissionResponse {
 }
 
 // --- general helpers ---
-
-func loadKubeConfig() (*rest.Config, error) {
-	if kubeconfig := os.Getenv("KUBECONFIG"); kubeconfig != "" {
-		return clientcmd.BuildConfigFromFlags("", kubeconfig)
-	}
-	return rest.InClusterConfig()
-}
 
 func envOrDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
