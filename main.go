@@ -28,15 +28,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cocoonstack/cocoon-operator/k8sutil"
+	"github.com/cocoonstack/cocoon-operator/logutil"
 	"github.com/projecteru2/core/log"
-	"github.com/projecteru2/core/types"
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/cocoonstack/cocoon-operator/pkg/k8sutil"
 )
 
 // Constants for ConfigMap name, annotation key, and toleration key used to
@@ -60,10 +59,7 @@ type jsonPatch struct {
 
 func main() {
 	ctx := context.Background()
-	logLevel := envOrDefault("WEBHOOK_LOG_LEVEL", "info")
-	if err := log.SetupLog(ctx, &types.ServerLogConfig{Level: logLevel}, ""); err != nil {
-		log.WithFunc("main").Fatalf(ctx, err, "setup log")
-	}
+	logutil.Setup(ctx, "WEBHOOK_LOG_LEVEL")
 
 	config, err := k8sutil.LoadConfig()
 	if err != nil {

@@ -77,7 +77,7 @@ lint: golangci-lint ## Run golangci-lint (linux + darwin)
 
 fmt: gofumpt goimports ## Format code with gofumpt and goimports
 	$(GOFMT) -l -w .
-	$(GOIMPORTS) -l -w --local 'github.com/cocoonstack' .
+	$(GOIMPORTS) -l -w --local 'github.com/cocoonstack/cocoon-webhook' .
 
 fmt-check: gofumpt goimports ## Check formatting (fails if files need formatting)
 	@test -z "$$($(GOFMT) -l .)" || { echo "Files need formatting (gofumpt):"; $(GOFMT) -l .; exit 1; }
