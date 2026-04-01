@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -82,10 +83,12 @@ func main() {
 		klog.Fatalf("load TLS: %v", err)
 	}
 	server := &http.Server{
-		Addr:    ":8443",
-		Handler: mux,
+		Addr:              ":8443",
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
 		},
 	}
 
@@ -346,12 +349,14 @@ func allocateSlot(ns, deployName, podName string) int {
 	maxSlot := -1
 
 	for key, val := range cm.Data {
-		if !strings.HasPrefix(key, prefix) {
+		slotStr, ok := strings.CutPrefix(key, prefix)
+		if !ok {
 			continue
 		}
-		slotStr := strings.TrimPrefix(key, prefix)
 		slot := 0
-		fmt.Sscanf(slotStr, "%d", &slot) //nolint:errcheck
+		if _, err := fmt.Sscanf(slotStr, "%d", &slot); err != nil {
+			continue
+		}
 		if pn := parseConfigMapField(val, "pod"); pn != "" {
 			usedSlots[slot] = pn
 		}
@@ -525,9 +530,9 @@ func replicaCount(p *int32) int32 {
 // comma-separated "key:value" string (e.g. "node:cocoon-pool,pod:xxx").
 func parseConfigMapField(data, key string) string {
 	prefix := key + ":"
-	for _, part := range strings.Split(data, ",") {
-		if strings.HasPrefix(part, prefix) {
-			return strings.TrimPrefix(part, prefix)
+	for part := range strings.SplitSeq(data, ",") {
+		if val, ok := strings.CutPrefix(part, prefix); ok {
+			return val
 		}
 	}
 	return ""
