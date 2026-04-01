@@ -264,19 +264,11 @@ func validateDeploymentScale(req *admissionv1.AdmissionRequest) *admissionv1.Adm
 		return allowResponse()
 	}
 
-	oldReplicas := replicaCount(oldDeploy.Spec.Replicas)
-	newReplicas := replicaCount(newDeploy.Spec.Replicas)
-
-	if newReplicas < oldReplicas {
-		msg := fmt.Sprintf(
-			"cocoon-webhook: scale-down blocked for cocoon Deployment %s/%s (%d -> %d). "+
-				"Agents are stateful VMs — use Hibernation CRD to suspend individual agents.",
-			req.Namespace, req.Name, oldReplicas, newReplicas)
-		klog.Infof("validate DENY: %s", msg)
-		return denyResponse(msg)
-	}
-
-	return allowResponse()
+	return checkScaleDown(
+		req, "Deployment",
+		replicaCount(oldDeploy.Spec.Replicas),
+		replicaCount(newDeploy.Spec.Replicas),
+	)
 }
 
 func validateStatefulSetScale(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
@@ -292,19 +284,24 @@ func validateStatefulSetScale(req *admissionv1.AdmissionRequest) *admissionv1.Ad
 		return allowResponse()
 	}
 
-	oldReplicas := replicaCount(oldSTS.Spec.Replicas)
-	newReplicas := replicaCount(newSTS.Spec.Replicas)
+	return checkScaleDown(
+		req, "StatefulSet",
+		replicaCount(oldSTS.Spec.Replicas),
+		replicaCount(newSTS.Spec.Replicas),
+	)
+}
 
-	if newReplicas < oldReplicas {
-		msg := fmt.Sprintf(
-			"cocoon-webhook: scale-down blocked for cocoon StatefulSet %s/%s (%d -> %d). "+
-				"Use Hibernation CRD to suspend individual agents.",
-			req.Namespace, req.Name, oldReplicas, newReplicas)
-		klog.Infof("validate DENY: %s", msg)
-		return denyResponse(msg)
+// checkScaleDown denies the request if newReplicas < oldReplicas.
+func checkScaleDown(req *admissionv1.AdmissionRequest, kind string, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
+	if newReplicas >= oldReplicas {
+		return allowResponse()
 	}
-
-	return allowResponse()
+	msg := fmt.Sprintf(
+		"cocoon-webhook: scale-down blocked for cocoon %s %s/%s (%d -> %d). "+
+			"Use Hibernation CRD to suspend individual agents.",
+		kind, req.Namespace, req.Name, oldReplicas, newReplicas)
+	klog.Infof("validate DENY: %s", msg)
+	return denyResponse(msg)
 }
 
 // --- VM name derivation and slot allocation ---
@@ -355,10 +352,8 @@ func allocateSlot(ns, deployName, podName string) int {
 		slotStr := strings.TrimPrefix(key, prefix)
 		slot := 0
 		fmt.Sscanf(slotStr, "%d", &slot) //nolint:errcheck
-		for _, part := range strings.Split(val, ",") {
-			if strings.HasPrefix(part, "pod:") {
-				usedSlots[slot] = strings.TrimPrefix(part, "pod:")
-			}
+		if pn := parseConfigMapField(val, "pod"); pn != "" {
+			usedSlots[slot] = pn
 		}
 		if slot > maxSlot {
 			maxSlot = slot
@@ -395,12 +390,7 @@ func lookupVMNode(ns, vmName string) string {
 	if !ok {
 		return ""
 	}
-	for _, part := range strings.Split(val, ",") {
-		if strings.HasPrefix(part, "node:") {
-			return strings.TrimPrefix(part, "node:")
-		}
-	}
-	return ""
+	return parseConfigMapField(val, "node")
 }
 
 func pickAnyCocoonNode() string {
@@ -529,6 +519,18 @@ func replicaCount(p *int32) int32 {
 		return *p
 	}
 	return 1
+}
+
+// parseConfigMapField extracts the value for a given key from a
+// comma-separated "key:value" string (e.g. "node:cocoon-pool,pod:xxx").
+func parseConfigMapField(data, key string) string {
+	prefix := key + ":"
+	for _, part := range strings.Split(data, ",") {
+		if strings.HasPrefix(part, prefix) {
+			return strings.TrimPrefix(part, prefix)
+		}
+	}
+	return ""
 }
 
 func escapeJSONPointer(s string) string {
