@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -116,7 +116,7 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	review.Response = mutate(review.Request)
+	review.Response = mutate(r.Context(), review.Request)
 	review.Response.UID = review.Request.UID
 
 	writeJSON(w, review)
@@ -138,7 +138,7 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
 
 // --- mutating admission logic ---
 
-func mutate(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+func mutate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	if req.Kind.Kind != "Pod" {
 		return allowResponse()
 	}
@@ -167,7 +167,6 @@ func mutate(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	}
 
 	// Fetch the affinity ConfigMap once for both lookupVMNode and allocateSlot.
-	ctx := context.Background()
 	cm, err := clientset.CoreV1().ConfigMaps(req.Namespace).Get(ctx, affinityConfigMap, metav1.GetOptions{})
 	if err != nil {
 		klog.Warningf("mutate %s/%s: failed to get ConfigMap %s: %v", req.Namespace, req.Name, affinityConfigMap, err)
@@ -181,7 +180,7 @@ func mutate(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 			return patchNodeName(nodeName)
 		}
 		// No affinity record — let scheduler pick any cocoon node.
-		return pickCocoonNode()
+		return pickCocoonNode(ctx)
 	}
 
 	// Derive stable VM name from owner (Deployment/RS) + namespace.
@@ -218,7 +217,7 @@ func mutate(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 		klog.Infof("mutate %s/%s: vm=%s -> node=%s (affinity)", req.Namespace, req.Name, vmName, nodeName)
 	} else {
 		// First-time: pick any cocoon-pool node.
-		if node := pickAnyCocoonNode(); node != "" {
+		if node := pickAnyCocoonNode(ctx); node != "" {
 			patches = append(patches, jsonPatch{
 				Op:    "add",
 				Path:  "/spec/nodeName",
@@ -404,8 +403,7 @@ func lookupVMNode(cm *corev1.ConfigMap, vmName string) string {
 	return parseConfigMapField(val, "node")
 }
 
-func pickAnyCocoonNode() string {
-	ctx := context.Background()
+func pickAnyCocoonNode(ctx context.Context) string {
 	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return ""
@@ -427,7 +425,7 @@ func pickAnyCocoonNode() string {
 	if len(cocoonNodes) == 0 {
 		return ""
 	}
-	sort.Strings(cocoonNodes)
+	slices.Sort(cocoonNodes)
 	return cocoonNodes[int(metav1.Now().UnixNano())%len(cocoonNodes)]
 }
 
@@ -463,8 +461,8 @@ func patchNodeName(nodeName string) *admissionv1.AdmissionResponse {
 	}
 }
 
-func pickCocoonNode() *admissionv1.AdmissionResponse {
-	node := pickAnyCocoonNode()
+func pickCocoonNode(ctx context.Context) *admissionv1.AdmissionResponse {
+	node := pickAnyCocoonNode(ctx)
 	if node == "" {
 		return allowResponse()
 	}
