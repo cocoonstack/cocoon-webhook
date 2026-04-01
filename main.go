@@ -167,10 +167,18 @@ func mutate(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 		return allowResponse()
 	}
 
+	// Fetch the affinity ConfigMap once for both lookupVMNode and allocateSlot.
+	ctx := context.Background()
+	cm, err := clientset.CoreV1().ConfigMaps(req.Namespace).Get(ctx, affinityConfigMap, metav1.GetOptions{})
+	if err != nil {
+		klog.Warningf("mutate %s/%s: failed to get ConfigMap %s: %v", req.Namespace, req.Name, affinityConfigMap, err)
+		cm = nil
+	}
+
 	// Already has vm-name annotation — don't override.
 	if pod.Annotations != nil && pod.Annotations[vmNameAnnotation] != "" {
 		vmName := pod.Annotations[vmNameAnnotation]
-		if nodeName := lookupVMNode(req.Namespace, vmName); nodeName != "" {
+		if nodeName := lookupVMNode(cm, vmName); nodeName != "" {
 			return patchNodeName(nodeName)
 		}
 		// No affinity record — let scheduler pick any cocoon node.
@@ -178,10 +186,10 @@ func mutate(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	}
 
 	// Derive stable VM name from owner (Deployment/RS) + namespace.
-	vmName := deriveVMName(&pod, req.Namespace, req.Name)
+	vmName := deriveVMName(&pod, req.Namespace, req.Name, cm)
 
 	// Look up last-known node for this VM.
-	nodeName := lookupVMNode(req.Namespace, vmName)
+	nodeName := lookupVMNode(cm, vmName)
 
 	var patches []jsonPatch
 
@@ -312,7 +320,7 @@ func checkScaleDown(req *admissionv1.AdmissionRequest, kind string, oldReplicas,
 // deriveVMName creates a stable VM name from the pod's owner chain.
 // For Deployment pods: vk-{ns}-{deployment-name}-{slot}
 // For bare pods: vk-{ns}-{pod-name}
-func deriveVMName(pod *corev1.Pod, ns, podName string) string {
+func deriveVMName(pod *corev1.Pod, ns, podName string, cm *corev1.ConfigMap) string {
 	// Walk owner references: Pod -> ReplicaSet -> Deployment.
 	deployName := ""
 	for _, ref := range pod.OwnerReferences {
@@ -326,7 +334,11 @@ func deriveVMName(pod *corev1.Pod, ns, podName string) string {
 	}
 
 	if deployName != "" {
-		slot := allocateSlot(ns, deployName, podName)
+		slot, err := allocateSlot(ns, deployName, podName, cm)
+		if err != nil {
+			klog.Warningf("allocateSlot %s/%s: %v, skipping slot allocation", ns, deployName, err)
+			return fmt.Sprintf("vk-%s-%s", ns, podName)
+		}
 		return fmt.Sprintf("vk-%s-%s-%d", ns, deployName, slot)
 	}
 
@@ -336,12 +348,9 @@ func deriveVMName(pod *corev1.Pod, ns, podName string) string {
 
 // allocateSlot assigns a stable replica index for a Deployment pod.
 // Reads the affinity ConfigMap to track slot assignments.
-func allocateSlot(ns, deployName, podName string) int {
-	ctx := context.Background()
-
-	cm, err := clientset.CoreV1().ConfigMaps(ns).Get(ctx, affinityConfigMap, metav1.GetOptions{})
-	if err != nil {
-		return 0
+func allocateSlot(ns, deployName, podName string, cm *corev1.ConfigMap) (int, error) {
+	if cm == nil {
+		return 0, fmt.Errorf("no ConfigMap available for slot allocation")
 	}
 
 	prefix := fmt.Sprintf("vk-%s-%s-", ns, deployName)
@@ -368,27 +377,25 @@ func allocateSlot(ns, deployName, podName string) int {
 	// Check if this pod already has a slot.
 	for slot, pn := range usedSlots {
 		if pn == podName {
-			return slot
+			return slot, nil
 		}
 	}
 
 	// Find first empty slot (pod was deleted).
 	for i := 0; i <= maxSlot; i++ {
 		if _, used := usedSlots[i]; !used {
-			return i
+			return i, nil
 		}
 	}
 
 	// All slots occupied — allocate new.
-	return maxSlot + 1
+	return maxSlot + 1, nil
 }
 
 // --- node lookup and selection ---
 
-func lookupVMNode(ns, vmName string) string {
-	ctx := context.Background()
-	cm, err := clientset.CoreV1().ConfigMaps(ns).Get(ctx, affinityConfigMap, metav1.GetOptions{})
-	if err != nil {
+func lookupVMNode(cm *corev1.ConfigMap, vmName string) string {
+	if cm == nil {
 		return ""
 	}
 	val, ok := cm.Data[vmName]
@@ -400,14 +407,9 @@ func lookupVMNode(ns, vmName string) string {
 
 func pickAnyCocoonNode() string {
 	ctx := context.Background()
-	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
-		LabelSelector: "type=virtual-kubelet",
-	})
-	if err != nil || len(nodes.Items) == 0 {
-		nodes, err = clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return ""
-		}
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return ""
 	}
 
 	var cocoonNodes []string
@@ -487,7 +489,7 @@ func envOrDefault(key, fallback string) string {
 }
 
 func decodeAdmissionReview(r *http.Request) (*admissionv1.AdmissionReview, error) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
