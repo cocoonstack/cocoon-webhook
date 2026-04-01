@@ -29,12 +29,13 @@ import (
 	"time"
 
 	"github.com/cocoonstack/cocoon-operator/pkg/k8sutil"
+	"github.com/projecteru2/core/log"
+	"github.com/projecteru2/core/types"
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
 )
 
 // Constants for ConfigMap name, annotation key, and toleration key used to
@@ -57,17 +58,23 @@ type jsonPatch struct {
 // --- entry point ---
 
 func main() {
+	ctx := context.Background()
+	logLevel := envOrDefault("WEBHOOK_LOG_LEVEL", "info")
+	if err := log.SetupLog(ctx, &types.ServerLogConfig{Level: logLevel}, ""); err != nil {
+		log.WithFunc("main").Fatalf(ctx, err, "setup log: %v", err)
+	}
+
 	config, err := k8sutil.LoadConfig()
 	if err != nil {
-		klog.Fatalf("k8s config: %v", err)
+		log.WithFunc("main").Fatalf(ctx, err, "k8s config: %v", err)
 	}
 	clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
-		klog.Fatalf("clientset: %v", err)
+		log.WithFunc("main").Fatalf(ctx, err, "init clientset: %v", err)
 	}
 
-	certFile := envOrDefault("TLS_CERT", "/etc/webhook/certs/tls.crt")
-	keyFile := envOrDefault("TLS_KEY", "/etc/webhook/certs/tls.key")
+	certFile := envOrDefault("TLS_CERT", "/etc/cocoon/webhook/certs/tls.crt")
+	keyFile := envOrDefault("TLS_KEY", "/etc/cocoon/webhook/certs/tls.key")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mutate", handleMutate)
@@ -79,7 +86,7 @@ func main() {
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		klog.Fatalf("load TLS: %v", err)
+		log.WithFunc("main").Fatalf(ctx, err, "load TLS: %v", err)
 	}
 	server := &http.Server{
 		Addr:              ":8443",
@@ -91,18 +98,18 @@ func main() {
 		},
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	go func() {
-		klog.Info("cocoon-webhook listening on :8443")
+		log.WithFunc("main").Info(ctx, "cocoon-webhook listening on :8443")
 		if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			klog.Fatalf("server: %v", err)
+			log.WithFunc("main").Fatalf(ctx, err, "listen and serve: %v", err)
 		}
 	}()
 	<-ctx.Done()
 	if err := server.Shutdown(context.Background()); err != nil {
-		klog.Errorf("shutdown: %v", err)
+		log.WithFunc("main").Warnf(context.Background(), "shutdown: %v", err)
 	}
 }
 
@@ -130,7 +137,7 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	review.Response = validate(review.Request)
+	review.Response = validate(r.Context(), review.Request)
 	review.Response.UID = review.Request.UID
 
 	writeJSON(w, review)
@@ -156,7 +163,7 @@ func mutate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1
 	// Skip mutation for CocoonSet-owned pods — controller handles everything.
 	for _, ref := range pod.OwnerReferences {
 		if ref.Kind == "CocoonSet" {
-			klog.Infof("mutate %s/%s: owned by CocoonSet %s, skipping", req.Namespace, req.Name, ref.Name)
+			log.WithFunc("mutate").Infof(ctx, "mutate %s/%s: owned by CocoonSet %s, skipping", req.Namespace, req.Name, ref.Name)
 			return allowResponse()
 		}
 	}
@@ -169,7 +176,7 @@ func mutate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1
 	// Fetch the affinity ConfigMap once for both lookupVMNode and allocateSlot.
 	cm, err := clientset.CoreV1().ConfigMaps(req.Namespace).Get(ctx, affinityConfigMap, metav1.GetOptions{})
 	if err != nil {
-		klog.Warningf("mutate %s/%s: failed to get ConfigMap %s: %v", req.Namespace, req.Name, affinityConfigMap, err)
+		log.WithFunc("mutate").Warnf(ctx, "mutate %s/%s: failed to get ConfigMap %s: %v", req.Namespace, req.Name, affinityConfigMap, err)
 		cm = nil
 	}
 
@@ -177,14 +184,14 @@ func mutate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1
 	if pod.Annotations != nil && pod.Annotations[vmNameAnnotation] != "" {
 		vmName := pod.Annotations[vmNameAnnotation]
 		if nodeName := lookupVMNode(cm, vmName); nodeName != "" {
-			return patchNodeName(nodeName)
+			return patchNodeName(ctx, nodeName)
 		}
 		// No affinity record — let scheduler pick any cocoon node.
 		return pickCocoonNode(ctx)
 	}
 
 	// Derive stable VM name from owner (Deployment/RS) + namespace.
-	vmName := deriveVMName(&pod, req.Namespace, req.Name, cm)
+	vmName := deriveVMName(ctx, &pod, req.Namespace, req.Name, cm)
 
 	// Look up last-known node for this VM.
 	nodeName := lookupVMNode(cm, vmName)
@@ -214,7 +221,7 @@ func mutate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1
 			Path:  "/spec/nodeName",
 			Value: nodeName,
 		})
-		klog.Infof("mutate %s/%s: vm=%s -> node=%s (affinity)", req.Namespace, req.Name, vmName, nodeName)
+		log.WithFunc("mutate").Infof(ctx, "mutate %s/%s: vm=%s -> node=%s (affinity)", req.Namespace, req.Name, vmName, nodeName)
 	} else {
 		// First-time: pick any cocoon-pool node.
 		if node := pickAnyCocoonNode(ctx); node != "" {
@@ -223,13 +230,13 @@ func mutate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1
 				Path:  "/spec/nodeName",
 				Value: node,
 			})
-			klog.Infof("mutate %s/%s: vm=%s -> node=%s (new, round-robin)", req.Namespace, req.Name, vmName, node)
+			log.WithFunc("mutate").Infof(ctx, "mutate %s/%s: vm=%s -> node=%s (new, round-robin)", req.Namespace, req.Name, vmName, node)
 		}
 	}
 
 	patchBytes, err := json.Marshal(patches)
 	if err != nil {
-		klog.Errorf("marshal patches: %v", err)
+		log.WithFunc("mutate").Error(ctx, err, "marshal patches")
 		return allowResponse()
 	}
 	pt := admissionv1.PatchTypeJSONPatch
@@ -245,22 +252,22 @@ func mutate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1
 // validate rejects scale-down (replicas decrease) for cocoon-type Deployments
 // and StatefulSets. Agents are stateful VMs — scale-down would destroy state.
 // Use the Hibernation CRD to suspend individual agents instead.
-func validate(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+func validate(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	if req.Operation != admissionv1.Update {
 		return allowResponse()
 	}
 
 	switch req.Kind.Kind {
 	case "Deployment":
-		return validateDeploymentScale(req)
+		return validateDeploymentScale(ctx, req)
 	case "StatefulSet":
-		return validateStatefulSetScale(req)
+		return validateStatefulSetScale(ctx, req)
 	default:
 		return allowResponse()
 	}
 }
 
-func validateDeploymentScale(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+func validateDeploymentScale(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	var oldDeploy, newDeploy appsv1.Deployment
 	if err := json.Unmarshal(req.OldObject.Raw, &oldDeploy); err != nil {
 		return allowResponse()
@@ -274,13 +281,13 @@ func validateDeploymentScale(req *admissionv1.AdmissionRequest) *admissionv1.Adm
 	}
 
 	return checkScaleDown(
-		req, "Deployment",
+		ctx, req, "Deployment",
 		replicaCount(oldDeploy.Spec.Replicas),
 		replicaCount(newDeploy.Spec.Replicas),
 	)
 }
 
-func validateStatefulSetScale(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+func validateStatefulSetScale(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	var oldSTS, newSTS appsv1.StatefulSet
 	if err := json.Unmarshal(req.OldObject.Raw, &oldSTS); err != nil {
 		return allowResponse()
@@ -294,14 +301,14 @@ func validateStatefulSetScale(req *admissionv1.AdmissionRequest) *admissionv1.Ad
 	}
 
 	return checkScaleDown(
-		req, "StatefulSet",
+		ctx, req, "StatefulSet",
 		replicaCount(oldSTS.Spec.Replicas),
 		replicaCount(newSTS.Spec.Replicas),
 	)
 }
 
 // checkScaleDown denies the request if newReplicas < oldReplicas.
-func checkScaleDown(req *admissionv1.AdmissionRequest, kind string, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
+func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, kind string, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
 	if newReplicas >= oldReplicas {
 		return allowResponse()
 	}
@@ -309,7 +316,7 @@ func checkScaleDown(req *admissionv1.AdmissionRequest, kind string, oldReplicas,
 		"cocoon-webhook: scale-down blocked for cocoon %s %s/%s (%d -> %d). "+
 			"Use Hibernation CRD to suspend individual agents.",
 		kind, req.Namespace, req.Name, oldReplicas, newReplicas)
-	klog.Infof("validate DENY: %s", msg)
+	log.WithFunc("checkScaleDown").Infof(ctx, "validate DENY: %s", msg)
 	return denyResponse(msg)
 }
 
@@ -318,7 +325,7 @@ func checkScaleDown(req *admissionv1.AdmissionRequest, kind string, oldReplicas,
 // deriveVMName creates a stable VM name from the pod's owner chain.
 // For Deployment pods: vk-{ns}-{deployment-name}-{slot}
 // For bare pods: vk-{ns}-{pod-name}
-func deriveVMName(pod *corev1.Pod, ns, podName string, cm *corev1.ConfigMap) string {
+func deriveVMName(ctx context.Context, pod *corev1.Pod, ns, podName string, cm *corev1.ConfigMap) string {
 	// Walk owner references: Pod -> ReplicaSet -> Deployment.
 	deployName := ""
 	for _, ref := range pod.OwnerReferences {
@@ -334,7 +341,7 @@ func deriveVMName(pod *corev1.Pod, ns, podName string, cm *corev1.ConfigMap) str
 	if deployName != "" {
 		slot, err := allocateSlot(ns, deployName, podName, cm)
 		if err != nil {
-			klog.Warningf("allocateSlot %s/%s: %v, skipping slot allocation", ns, deployName, err)
+			log.WithFunc("deriveVMName").Warnf(ctx, "allocateSlot %s/%s: %v, skipping slot allocation", ns, deployName, err)
 			return fmt.Sprintf("vk-%s-%s", ns, podName)
 		}
 		return fmt.Sprintf("vk-%s-%s-%d", ns, deployName, slot)
@@ -442,7 +449,7 @@ func denyResponse(msg string) *admissionv1.AdmissionResponse {
 	}
 }
 
-func patchNodeName(nodeName string) *admissionv1.AdmissionResponse {
+func patchNodeName(ctx context.Context, nodeName string) *admissionv1.AdmissionResponse {
 	patches := []jsonPatch{{
 		Op:    "add",
 		Path:  "/spec/nodeName",
@@ -450,7 +457,7 @@ func patchNodeName(nodeName string) *admissionv1.AdmissionResponse {
 	}}
 	patchBytes, err := json.Marshal(patches)
 	if err != nil {
-		klog.Errorf("marshal patches: %v", err)
+		log.WithFunc("patchNodeName").Error(ctx, err, "marshal patches")
 		return allowResponse()
 	}
 	pt := admissionv1.PatchTypeJSONPatch
@@ -466,7 +473,7 @@ func pickCocoonNode(ctx context.Context) *admissionv1.AdmissionResponse {
 	if node == "" {
 		return allowResponse()
 	}
-	return patchNodeName(node)
+	return patchNodeName(ctx, node)
 }
 
 // --- general helpers ---
