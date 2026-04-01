@@ -25,6 +25,24 @@ Often unnecessary for:
 - Setups that pin workloads explicitly with `nodeName`
 - Setups that rely only on CocoonSet (the controller handles placement)
 
+## Installation
+
+Download a pre-built binary from [GitHub Releases](https://github.com/cocoonstack/cocoon-webhook/releases):
+
+```bash
+# Download the latest release (Linux amd64)
+curl -fSL -o cocoon-webhook \
+  "https://github.com/cocoonstack/cocoon-webhook/releases/latest/download/cocoon-webhook-linux-amd64"
+chmod +x cocoon-webhook
+
+# Or for macOS (amd64)
+curl -fSL -o cocoon-webhook \
+  "https://github.com/cocoonstack/cocoon-webhook/releases/latest/download/cocoon-webhook-darwin-amd64"
+chmod +x cocoon-webhook
+```
+
+Alternatively, build from source (see below).
+
 ## Building
 
 ```bash
