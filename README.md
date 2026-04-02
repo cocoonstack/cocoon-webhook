@@ -85,7 +85,6 @@ make help           # show all targets
 | [cocoon-common](https://github.com/cocoonstack/cocoon-common) | Shared metadata, Kubernetes, and logging helpers |
 | [cocoon-operator](https://github.com/cocoonstack/cocoon-operator) | CocoonSet and Hibernation CRDs |
 | [epoch](https://github.com/cocoonstack/epoch) | Remote snapshot storage |
-| [glance](https://github.com/cocoonstack/glance) | Web dashboard |
 | [vk-cocoon](https://github.com/cocoonstack/vk-cocoon) | Virtual kubelet provider managing VM lifecycle |
 
 ## License
