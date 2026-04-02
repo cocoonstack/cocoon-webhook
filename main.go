@@ -23,11 +23,11 @@ import (
 	"syscall"
 	"time"
 
-	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
-	commonlog "github.com/cocoonstack/cocoon-common/log"
 	"github.com/projecteru2/core/log"
 	"k8s.io/client-go/kubernetes"
 
+	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
+	commonlog "github.com/cocoonstack/cocoon-common/log"
 	"github.com/cocoonstack/cocoon-webhook/version"
 )
 
@@ -39,11 +39,11 @@ func main() {
 
 	config, err := commonk8s.LoadConfig()
 	if err != nil {
-		logger.Fatalf(ctx, err, "load k8s config: %v", err)
+		logger.Fatalf(ctx, err, "load k8s config")
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		logger.Fatalf(ctx, err, "init clientset: %v", err)
+		logger.Fatalf(ctx, err, "init clientset")
 	}
 
 	certFile := envOrDefault("TLS_CERT", "/etc/cocoon/webhook/certs/tls.crt")
@@ -51,7 +51,7 @@ func main() {
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		logger.Fatalf(ctx, err, "load TLS keypair: %v", err)
+		logger.Fatalf(ctx, err, "load TLS keypair")
 	}
 
 	server := &http.Server{
@@ -70,7 +70,7 @@ func main() {
 	go func() {
 		logger.Infof(ctx, "cocoon-webhook %s started (rev=%s built=%s) on :8443", version.VERSION, version.REVISION, version.BUILTAT)
 		if serveErr := server.ListenAndServeTLS("", ""); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			logger.Fatalf(ctx, serveErr, "listen and serve: %v", serveErr)
+			logger.Fatalf(ctx, serveErr, "listen and serve")
 		}
 	}()
 

@@ -5,17 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/cocoonstack/cocoon-common/meta"
 	"github.com/projecteru2/core/log"
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/cocoonstack/cocoon-common/meta"
 )
 
 // mutate applies placement and vm-name annotations for Pod CREATE operations.
 func mutate(ctx context.Context, clientset kubernetes.Interface, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+	logger := log.WithFunc("mutate")
+
 	if req.Kind.Kind != "Pod" {
 		return allowResponse()
 	}
@@ -31,7 +34,7 @@ func mutate(ctx context.Context, clientset kubernetes.Interface, req *admissionv
 
 	for _, ref := range pod.OwnerReferences {
 		if ref.Kind == meta.KindCocoonSet {
-			log.WithFunc("mutate").Infof(ctx, "mutate %s/%s: owned by CocoonSet %s, skipping", req.Namespace, req.Name, ref.Name)
+			logger.Infof(ctx, "mutate %s/%s: owned by CocoonSet %s, skipping", req.Namespace, req.Name, ref.Name)
 			return allowResponse()
 		}
 	}
@@ -42,7 +45,7 @@ func mutate(ctx context.Context, clientset kubernetes.Interface, req *admissionv
 
 	cm, err := clientset.CoreV1().ConfigMaps(req.Namespace).Get(ctx, affinityConfigMap, metav1.GetOptions{})
 	if err != nil {
-		log.WithFunc("mutate").Warnf(ctx, "mutate %s/%s: failed to get ConfigMap %s: %v", req.Namespace, req.Name, affinityConfigMap, err)
+		logger.Warnf(ctx, "mutate %s/%s: failed to get ConfigMap %s: %v", req.Namespace, req.Name, affinityConfigMap, err)
 		cm = nil
 	}
 
@@ -78,19 +81,19 @@ func mutate(ctx context.Context, clientset kubernetes.Interface, req *admissionv
 			Path:  "/spec/nodeName",
 			Value: nodeName,
 		})
-		log.WithFunc("mutate").Infof(ctx, "mutate %s/%s: vm=%s -> node=%s (affinity)", req.Namespace, req.Name, vmName, nodeName)
+		logger.Infof(ctx, "mutate %s/%s: vm=%s -> node=%s (affinity)", req.Namespace, req.Name, vmName, nodeName)
 	} else if node := pickAnyCocoonNode(ctx, clientset); node != "" {
 		patches = append(patches, jsonPatch{
 			Op:    "add",
 			Path:  "/spec/nodeName",
 			Value: node,
 		})
-		log.WithFunc("mutate").Infof(ctx, "mutate %s/%s: vm=%s -> node=%s (new, round-robin)", req.Namespace, req.Name, vmName, node)
+		logger.Infof(ctx, "mutate %s/%s: vm=%s -> node=%s (new, round-robin)", req.Namespace, req.Name, vmName, node)
 	}
 
 	patchBytes, err := json.Marshal(patches)
 	if err != nil {
-		log.WithFunc("mutate").Error(ctx, err, "marshal patches")
+		logger.Error(ctx, err, "marshal patches")
 		return allowResponse()
 	}
 	pt := admissionv1.PatchTypeJSONPatch
@@ -168,6 +171,7 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, kind
 		"cocoon-webhook: scale-down blocked for cocoon %s %s/%s (%d -> %d). "+
 			"Use Hibernation CRD to suspend individual agents.",
 		kind, req.Namespace, req.Name, oldReplicas, newReplicas)
-	log.WithFunc("checkScaleDown").Warnf(ctx, "validate DENY: %s", msg)
+	logger := log.WithFunc("checkScaleDown")
+	logger.Warnf(ctx, "validate DENY: %s", msg)
 	return denyResponse(msg)
 }

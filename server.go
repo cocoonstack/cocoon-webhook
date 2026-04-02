@@ -3,8 +3,9 @@ package main
 import (
 	"net/http"
 
-	"github.com/cocoonstack/cocoon-common/meta"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/cocoonstack/cocoon-common/meta"
 )
 
 // Constants for ConfigMap name, annotation key, and toleration key used to
