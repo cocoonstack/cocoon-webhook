@@ -145,6 +145,82 @@ func TestMutateAssignsVMNameAndNode(t *testing.T) {
 	}
 }
 
+func TestMutatePersistsAffinityBetweenCreates(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: affinityConfigMap, Namespace: "prod"},
+			Data:       map[string]string{},
+		},
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "cocoon-a",
+				Labels: map[string]string{"type": "virtual-kubelet"},
+			},
+		},
+	)
+
+	makeReq := func(name string) *admissionv1.AdmissionRequest {
+		pod := corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "prod",
+				OwnerReferences: []metav1.OwnerReference{{
+					Kind: "ReplicaSet",
+					Name: "demo-7b7c9d9d5f",
+				}},
+			},
+			Spec: corev1.PodSpec{
+				Tolerations: []corev1.Toleration{{Key: meta.TolerationKey}},
+			},
+		}
+		raw, err := json.Marshal(pod)
+		if err != nil {
+			t.Fatalf("marshal pod: %v", err)
+		}
+		return &admissionv1.AdmissionRequest{
+			Namespace: "prod",
+			Name:      name,
+			Kind:      metav1.GroupVersionKind{Kind: "Pod"},
+			Object:    runtime.RawExtension{Raw: raw},
+		}
+	}
+
+	first := mutate(context.Background(), clientset, makeReq("demo-a"))
+	if !first.Allowed {
+		t.Fatalf("first mutate should allow")
+	}
+	var firstPatches []jsonPatch
+	if err := json.Unmarshal(first.Patch, &firstPatches); err != nil {
+		t.Fatalf("unmarshal first patch: %v", err)
+	}
+	if got, want := firstPatches[1].Value, "vk-prod-demo-0"; got != want {
+		t.Fatalf("first vm-name = %v, want %s", got, want)
+	}
+
+	second := mutate(context.Background(), clientset, makeReq("demo-b"))
+	if !second.Allowed {
+		t.Fatalf("second mutate should allow")
+	}
+	var secondPatches []jsonPatch
+	if err := json.Unmarshal(second.Patch, &secondPatches); err != nil {
+		t.Fatalf("unmarshal second patch: %v", err)
+	}
+	if got, want := secondPatches[1].Value, "vk-prod-demo-1"; got != want {
+		t.Fatalf("second vm-name = %v, want %s", got, want)
+	}
+
+	cm, err := clientset.CoreV1().ConfigMaps("prod").Get(context.Background(), affinityConfigMap, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get configmap: %v", err)
+	}
+	if got := cm.Data["vk-prod-demo-0"]; got != "node:cocoon-a,pod:demo-a" {
+		t.Fatalf("slot 0 record = %q, want node:cocoon-a,pod:demo-a", got)
+	}
+	if got := cm.Data["vk-prod-demo-1"]; got != "node:cocoon-a,pod:demo-b" {
+		t.Fatalf("slot 1 record = %q, want node:cocoon-a,pod:demo-b", got)
+	}
+}
+
 func TestValidateDeploymentScale(t *testing.T) {
 	oldReplicas := int32(3)
 	newReplicas := int32(2)

@@ -9,7 +9,6 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/cocoonstack/cocoon-common/meta"
@@ -43,22 +42,12 @@ func mutate(ctx context.Context, clientset kubernetes.Interface, req *admissionv
 		return allowResponse()
 	}
 
-	cm, err := clientset.CoreV1().ConfigMaps(req.Namespace).Get(ctx, affinityConfigMap, metav1.GetOptions{})
-	if err != nil {
-		logger.Warnf(ctx, "mutate %s/%s: failed to get ConfigMap %s: %v", req.Namespace, req.Name, affinityConfigMap, err)
-		cm = nil
+	vmName, nodeName, reserveErr := reserveAffinity(ctx, clientset, &pod, nil)
+	if reserveErr != nil {
+		// Preserve availability if the affinity store is temporarily unavailable.
+		logger.Warnf(ctx, "mutate %s/%s: affinity reservation failed: %v", req.Namespace, req.Name, reserveErr)
+		return allowResponse()
 	}
-
-	if pod.Annotations != nil && pod.Annotations[vmNameAnnotation] != "" {
-		vmName := pod.Annotations[vmNameAnnotation]
-		if nodeName := lookupVMNode(cm, vmName); nodeName != "" {
-			return patchNodeName(ctx, nodeName)
-		}
-		return pickCocoonNode(ctx, clientset)
-	}
-
-	vmName := deriveVMName(ctx, &pod, req.Namespace, req.Name, cm)
-	nodeName := lookupVMNode(cm, vmName)
 
 	var patches []jsonPatch
 	if pod.Annotations == nil {

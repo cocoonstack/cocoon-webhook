@@ -13,7 +13,6 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/cocoonstack/cocoon-common/meta"
 )
@@ -34,33 +33,6 @@ func denyResponse(msg string) *admissionv1.AdmissionResponse {
 		Allowed: false,
 		Result:  &metav1.Status{Message: msg, Reason: metav1.StatusReasonForbidden},
 	}
-}
-
-func patchNodeName(ctx context.Context, nodeName string) *admissionv1.AdmissionResponse {
-	patches := []jsonPatch{{
-		Op:    "add",
-		Path:  "/spec/nodeName",
-		Value: nodeName,
-	}}
-	patchBytes, err := json.Marshal(patches)
-	if err != nil {
-		log.WithFunc("patchNodeName").Error(ctx, err, "marshal patches")
-		return allowResponse()
-	}
-	pt := admissionv1.PatchTypeJSONPatch
-	return &admissionv1.AdmissionResponse{
-		Allowed:   true,
-		Patch:     patchBytes,
-		PatchType: &pt,
-	}
-}
-
-func pickCocoonNode(ctx context.Context, clientset kubernetes.Interface) *admissionv1.AdmissionResponse {
-	node := pickAnyCocoonNode(ctx, clientset)
-	if node == "" {
-		return allowResponse()
-	}
-	return patchNodeName(ctx, node)
 }
 
 func envOrDefault(key, fallback string) string {

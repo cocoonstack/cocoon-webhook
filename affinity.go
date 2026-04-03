@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/projecteru2/core/log"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/cocoonstack/cocoon-common/meta"
 )
@@ -45,8 +50,8 @@ func allocateSlot(ns, deployName, podName string, cm *corev1.ConfigMap) (int, er
 		if !ok {
 			continue
 		}
-		slot := 0
-		if _, err := fmt.Sscanf(slotStr, "%d", &slot); err != nil {
+		slot, err := strconv.Atoi(slotStr)
+		if err != nil {
 			continue
 		}
 		if pn := parseConfigMapField(val, "pod"); pn != "" {
@@ -70,6 +75,71 @@ func allocateSlot(ns, deployName, podName string, cm *corev1.ConfigMap) (int, er
 	}
 
 	return maxSlot + 1, nil
+}
+
+func reserveAffinity(ctx context.Context, clientset kubernetes.Interface, pod *corev1.Pod, cm *corev1.ConfigMap) (string, string, error) {
+	if clientset == nil {
+		return "", "", fmt.Errorf("no clientset available for affinity reservation")
+	}
+	if pod == nil {
+		return "", "", fmt.Errorf("pod is nil")
+	}
+
+	var vmName string
+	var nodeName string
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		current, getErr := clientset.CoreV1().ConfigMaps(pod.Namespace).Get(ctx, affinityConfigMap, metav1.GetOptions{})
+		switch {
+		case getErr == nil:
+			cm = current
+		case apierrors.IsNotFound(getErr):
+			cm = &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      affinityConfigMap,
+					Namespace: pod.Namespace,
+				},
+				Data: map[string]string{},
+			}
+		default:
+			return getErr
+		}
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
+
+		if pod.Annotations != nil && pod.Annotations[vmNameAnnotation] != "" {
+			vmName = pod.Annotations[vmNameAnnotation]
+		} else {
+			vmName = deriveVMName(ctx, pod, pod.Namespace, pod.Name, cm)
+		}
+		if vmName == "" {
+			return fmt.Errorf("empty vm name")
+		}
+
+		nodeName = lookupVMNode(cm, vmName)
+		if nodeName == "" {
+			nodeName = pickAnyCocoonNode(ctx, clientset)
+		}
+		cm.Data[vmName] = fmt.Sprintf("node:%s,pod:%s", nodeName, pod.Name)
+
+		if apierrors.IsNotFound(getErr) {
+			_, err := clientset.CoreV1().ConfigMaps(pod.Namespace).Create(ctx, cm, metav1.CreateOptions{})
+			if apierrors.IsAlreadyExists(err) {
+				return apierrors.NewConflict(schema.GroupResource{Resource: "configmaps"}, affinityConfigMap, err)
+			}
+			return err
+		}
+		_, err := clientset.CoreV1().ConfigMaps(pod.Namespace).Update(ctx, cm, metav1.UpdateOptions{})
+		if apierrors.IsNotFound(err) || apierrors.IsAlreadyExists(err) {
+			return apierrors.NewConflict(schema.GroupResource{Resource: "configmaps"}, affinityConfigMap, err)
+		}
+		return err
+	})
+	if err != nil {
+		log.WithFunc("reserveAffinity").Warnf(ctx, "persist affinity %s/%s: %v", pod.Namespace, pod.Name, err)
+		return "", "", err
+	}
+	return vmName, nodeName, nil
 }
 
 func lookupVMNode(cm *corev1.ConfigMap, vmName string) string {
