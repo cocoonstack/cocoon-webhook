@@ -4,7 +4,7 @@ Kubernetes admission webhook for sticky scheduling of VM-backed pods in [cocoons
 
 ## Overview
 
-- **Mutating** (`POST /mutate`) -- on Pod CREATE, derives a stable VM name from the Deployment or ReplicaSet owner chain, looks up the previously assigned node in the `cocoon-vm-affinity` ConfigMap, and patches `spec.nodeName` so the pod returns to the same worker
+- **Mutating** (`POST /mutate`) -- on Pod CREATE (skipped for CocoonSet-owned pods), derives a stable VM name from the Deployment or ReplicaSet owner chain, reserves affinity in the `cocoon-vm-affinity` ConfigMap (created if missing), and patches `spec.nodeName` so the pod returns to the same worker or gets a newly selected cocoon node via round-robin
 - **Validating** (`POST /validate`) -- on Deployment or StatefulSet UPDATE, blocks scale-down for cocoon-type workloads and preserves VM state
 - **Health check** -- served on `GET /healthz`
 
@@ -18,7 +18,7 @@ The webhook exposes three handlers:
 - `POST /validate` for scale-down protection
 - `GET /healthz` for readiness checks
 
-It uses the Kubernetes API to read the `cocoon-vm-affinity` ConfigMap and current node inventory, then returns standard admission patches or validation rejections.
+It uses the Kubernetes API to read and write the `cocoon-vm-affinity` ConfigMap (persisting reservations with retry-on-conflict) and query the current node inventory, then returns standard admission patches or validation rejections.
 
 ## Installation
 
