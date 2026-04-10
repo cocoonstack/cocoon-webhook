@@ -15,12 +15,6 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-const (
-	// defaultNodePool is used when a pod does not request a specific
-	// pool via the cocoonstack.io/pool label or annotation.
-	defaultNodePool = "default"
-)
-
 // mutatePod is the admission entry point for Pod CREATE. It writes
 // the canonical VM name annotation and pins the pod to a sticky
 // cocoon node via spec.nodeName. Pods that are not cocoon-tolerated,
@@ -59,16 +53,17 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	}
 
 	pool := podNodePool(&pod)
-	res, err := s.affinity.Reserve(ctx, affinity.ReserveRequest{
+	name := podDisplayName(&pod, req)
+	res, err := s.store.Reserve(ctx, affinity.ReserveRequest{
 		Pool:       pool,
 		Namespace:  req.Namespace,
 		Deployment: meta.OwnerDeploymentName(pod.OwnerReferences),
-		PodName:    podDisplayName(&pod, req),
+		PodName:    name,
 	})
 	if err != nil {
 		// Preserve cluster availability if the affinity store is
 		// unreachable: log loudly and let the pod through unmutated.
-		logger.Errorf(ctx, err, "reserve affinity for pod %s/%s", req.Namespace, podDisplayName(&pod, req))
+		logger.Errorf(ctx, err, "reserve affinity for pod %s/%s", req.Namespace, name)
 		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAffinityFailed)
 		return allowResponse()
 	}
@@ -76,12 +71,12 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 
 	patch, err := buildMutatePatch(&pod, res)
 	if err != nil {
-		logger.Errorf(ctx, err, "build mutate patch for pod %s/%s", req.Namespace, podDisplayName(&pod, req))
+		logger.Errorf(ctx, err, "build mutate patch for pod %s/%s", req.Namespace, name)
 		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionError)
 		return allowResponse()
 	}
 
-	logger.Infof(ctx, "mutate %s/%s: vm=%s node=%s", req.Namespace, podDisplayName(&pod, req), res.VMName, res.Node)
+	logger.Infof(ctx, "mutate %s/%s: vm=%s node=%s", req.Namespace, name, res.VMName, res.Node)
 	metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAllow)
 
 	pt := admissionv1.PatchTypeJSONPatch
@@ -119,7 +114,14 @@ func podNodePool(pod *corev1.Pod) string {
 	if v := pod.Annotations[meta.LabelNodePool]; v != "" {
 		return v
 	}
-	return defaultNodePool
+	return meta.DefaultNodePool
+}
+
+// jsonPatchOp is a single RFC 6902 patch operation.
+type jsonPatchOp struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value,omitempty"`
 }
 
 // buildMutatePatch produces an RFC 6902 JSON patch that writes the
@@ -158,11 +160,4 @@ func escapeJSONPointer(s string) string {
 	s = strings.ReplaceAll(s, "~", "~0")
 	s = strings.ReplaceAll(s, "/", "~1")
 	return s
-}
-
-// jsonPatchOp is a single RFC 6902 patch operation.
-type jsonPatchOp struct {
-	Op    string `json:"op"`
-	Path  string `json:"path"`
-	Value any    `json:"value,omitempty"`
 }

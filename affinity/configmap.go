@@ -18,6 +18,8 @@ import (
 	"github.com/cocoonstack/cocoon-common/meta"
 )
 
+var _ Store = (*ConfigMapStore)(nil)
+
 // ConfigMapStore is a Store backed by one ConfigMap per cocoon node
 // pool. Each entry is keyed by "<namespace>/<deployment>/<slot>" and
 // the value is a JSON-encoded Reservation. RetryOnConflict guards
@@ -158,7 +160,7 @@ func (s *ConfigMapStore) fetchOrInitConfigMap(ctx context.Context, pool string) 
 				Name:      name,
 				Namespace: systemNamespace,
 				Labels: map[string]string{
-					meta.LabelManagedBy: "cocoon-webhook",
+					meta.LabelManagedBy: managedByValue,
 					meta.LabelNodePool:  pool,
 				},
 			},

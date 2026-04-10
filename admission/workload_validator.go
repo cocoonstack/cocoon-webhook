@@ -9,6 +9,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	"github.com/cocoonstack/cocoon-common/meta"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
@@ -57,32 +58,40 @@ func validateScaleDown[T scalable](ctx context.Context, req *admissionv1.Admissi
 		return allowResponse()
 	}
 
-	oldReplicas, oldTolerations := workloadShape(&oldObj)
-	newReplicas, newTolerations := workloadShape(&newObj)
-	_ = oldTolerations // tolerations on the old object are unused; the new spec is what matters
-
-	if !meta.HasCocoonToleration(newTolerations) {
+	if !meta.HasCocoonToleration(workloadTolerations(&newObj)) {
 		return allowResponse()
 	}
-	return checkScaleDown(ctx, req, req.Kind.Kind, oldReplicas, newReplicas)
+	return checkScaleDown(ctx, req, workloadReplicas(&oldObj), workloadReplicas(&newObj))
 }
 
-// workloadShape extracts the replica count + pod-template
-// tolerations from either Deployment or StatefulSet via a type
-// switch on the generic argument.
-func workloadShape[T scalable](obj *T) (int32, []corev1.Toleration) {
+// workloadReplicas extracts the replica count from either Deployment
+// or StatefulSet via a type switch on the generic argument. The
+// apps controllers default a nil pointer to 1, so we do too.
+func workloadReplicas[T scalable](obj *T) int32 {
 	switch v := any(obj).(type) {
 	case *appsv1.Deployment:
-		return replicaCount(v.Spec.Replicas), v.Spec.Template.Spec.Tolerations
+		return ptr.Deref(v.Spec.Replicas, 1)
 	case *appsv1.StatefulSet:
-		return replicaCount(v.Spec.Replicas), v.Spec.Template.Spec.Tolerations
+		return ptr.Deref(v.Spec.Replicas, 1)
 	default:
-		return 0, nil
+		return 0
 	}
 }
 
-// checkScaleDown denies the request if newReplicas < oldReplicas.
-func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, kind string, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
+// workloadTolerations returns the pod-template tolerations of the
+// workload — used to filter out non-cocoon workloads early.
+func workloadTolerations[T scalable](obj *T) []corev1.Toleration {
+	switch v := any(obj).(type) {
+	case *appsv1.Deployment:
+		return v.Spec.Template.Spec.Tolerations
+	case *appsv1.StatefulSet:
+		return v.Spec.Template.Spec.Tolerations
+	default:
+		return nil
+	}
+}
+
+func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
 	if newReplicas >= oldReplicas {
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.DecisionAllow)
 		return allowResponse()
@@ -90,17 +99,8 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, kind
 	msg := fmt.Sprintf(
 		"cocoon-webhook: scale-down blocked for cocoon %s %s/%s (%d -> %d). "+
 			"Use a CocoonHibernation CR to suspend individual agents.",
-		kind, req.Namespace, req.Name, oldReplicas, newReplicas)
+		req.Kind.Kind, req.Namespace, req.Name, oldReplicas, newReplicas)
 	log.WithFunc("checkScaleDown").Warn(ctx, msg)
 	metrics.RecordAdmission(metrics.HandlerValidate, metrics.DecisionDeny)
 	return denyResponse(msg)
-}
-
-// replicaCount unwraps a *int32 replica count, defaulting to 1 the
-// way the apps controllers do.
-func replicaCount(p *int32) int32 {
-	if p != nil {
-		return *p
-	}
-	return 1
 }

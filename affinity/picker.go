@@ -12,6 +12,8 @@ import (
 	"github.com/cocoonstack/cocoon-common/meta"
 )
 
+var _ NodePicker = (*LeastUsedPicker)(nil)
+
 // LeastUsedPicker picks the cocoon node in a pool that currently
 // hosts the fewest pods. Ties are broken alphabetically so the
 // outcome is deterministic across multiple webhook replicas.
@@ -65,11 +67,10 @@ func (p *LeastUsedPicker) Pick(ctx context.Context, pool string) (string, error)
 // candidate node. Excluded: pods in Succeeded / Failed phases (they
 // no longer consume capacity).
 //
-// One cluster-wide pods.List + in-memory grouping replaces the N+1
-// "list pods on each node" the previous implementation used. The
-// FieldSelector lets the API server filter on its side, so the
-// transferred set is bounded by the candidate-node count rather
-// than every pod in the cluster.
+// TODO(perf): this currently issues one cluster-wide pods.List per
+// Pick, which is on the admission hot path. Replace with a shared
+// informer / cached lister at process start so the count becomes a
+// map lookup instead of an apiserver round trip.
 func (p *LeastUsedPicker) podsPerNode(ctx context.Context, nodes []corev1.Node) (map[string]int, error) {
 	counts := make(map[string]int, len(nodes))
 	wanted := make(map[string]struct{}, len(nodes))

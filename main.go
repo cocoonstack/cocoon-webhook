@@ -23,6 +23,7 @@ import (
 	"github.com/projecteru2/core/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/env"
 
 	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
 	commonlog "github.com/cocoonstack/cocoon-common/log"
@@ -62,10 +63,10 @@ func main() {
 
 	metrics.Register(prometheus.DefaultRegisterer)
 
-	certFile := envOrDefault("TLS_CERT", defaultCertFile)
-	keyFile := envOrDefault("TLS_KEY", defaultKeyFile)
-	listen := envOrDefault("LISTEN_ADDR", defaultListen)
-	metricsListen := envOrDefault("METRICS_ADDR", defaultMetricsListen)
+	certFile := env.GetString("TLS_CERT", defaultCertFile)
+	keyFile := env.GetString("TLS_KEY", defaultKeyFile)
+	listen := env.GetString("LISTEN_ADDR", defaultListen)
+	metricsListen := env.GetString("METRICS_ADDR", defaultMetricsListen)
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -112,7 +113,7 @@ func main() {
 	go func() {
 		logger.Infof(ctx, "cocoon-webhook metrics listening on %s", metricsListen)
 		if serveErr := metricsServer.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			logger.Errorf(ctx, serveErr, "metrics listen and serve")
+			logger.Error(ctx, serveErr, "metrics listen and serve")
 		}
 	}()
 
@@ -125,18 +126,17 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	shutdownCtx := context.Background()
+	// Shutdown gets a fresh ctx because the parent ctx is already
+	// canceled by the signal handler. The 15s budget bounds how long
+	// in-flight admission requests get to drain before the process
+	// exits — long enough for healthy handlers, short enough that a
+	// stuck connection cannot wedge the pod indefinitely.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Warnf(shutdownCtx, "shutdown admission: %v", err)
 	}
 	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
 		logger.Warnf(shutdownCtx, "shutdown metrics: %v", err)
 	}
-}
-
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

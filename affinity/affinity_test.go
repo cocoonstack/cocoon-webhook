@@ -3,7 +3,6 @@ package affinity
 import (
 	"context"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -244,17 +243,6 @@ type fixedNodePicker string
 func (n fixedNodePicker) Pick(_ context.Context, _ string) (string, error) {
 	return string(n), nil
 }
-
-// helper used by reservation timestamp checks if needed.
-func recentReservation(slot int) Reservation {
-	return Reservation{
-		Pool: "default", Namespace: "ns", Deployment: "demo", Slot: slot,
-		UpdatedAt: time.Now().UTC(),
-	}
-}
-
-// silence linter for the helper above; remove if a test starts using it.
-var _ = recentReservation
 
 // Sanity check that the fake client behaves the way the test pattern assumes.
 func TestFakeClientsetSanity(t *testing.T) {

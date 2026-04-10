@@ -16,8 +16,9 @@ import (
 
 func TestCheckScaleDownAllowsScaleUp(t *testing.T) {
 	resp := checkScaleDown(context.Background(), &admissionv1.AdmissionRequest{
+		Kind:      metav1.GroupVersionKind{Kind: "Deployment"},
 		Namespace: "ns", Name: "demo",
-	}, "Deployment", 2, 5)
+	}, 2, 5)
 	if !resp.Allowed {
 		t.Errorf("scale-up should be allowed")
 	}
@@ -25,8 +26,9 @@ func TestCheckScaleDownAllowsScaleUp(t *testing.T) {
 
 func TestCheckScaleDownAllowsEqual(t *testing.T) {
 	resp := checkScaleDown(context.Background(), &admissionv1.AdmissionRequest{
+		Kind:      metav1.GroupVersionKind{Kind: "Deployment"},
 		Namespace: "ns", Name: "demo",
-	}, "Deployment", 3, 3)
+	}, 3, 3)
 	if !resp.Allowed {
 		t.Errorf("equal replicas should be allowed")
 	}
@@ -34,8 +36,9 @@ func TestCheckScaleDownAllowsEqual(t *testing.T) {
 
 func TestCheckScaleDownDeniesDecrement(t *testing.T) {
 	resp := checkScaleDown(context.Background(), &admissionv1.AdmissionRequest{
+		Kind:      metav1.GroupVersionKind{Kind: "Deployment"},
 		Namespace: "ns", Name: "demo",
-	}, "Deployment", 5, 2)
+	}, 5, 2)
 	if resp.Allowed {
 		t.Errorf("scale-down should be denied")
 	}
@@ -78,16 +81,6 @@ func TestServerValidateWorkloadIgnoresCreate(t *testing.T) {
 	resp := srv.validateWorkload(context.Background(), review)
 	if !resp.Allowed {
 		t.Errorf("CREATE operation should pass through")
-	}
-}
-
-func TestReplicaCountDefaultsToOne(t *testing.T) {
-	if got := replicaCount(nil); got != 1 {
-		t.Errorf("nil pointer should default to 1, got %d", got)
-	}
-	val := int32(7)
-	if got := replicaCount(&val); got != 7 {
-		t.Errorf("explicit replicas: got %d, want 7", got)
 	}
 }
 

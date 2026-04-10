@@ -19,12 +19,12 @@ const maxAdmissionBody = 10 << 20 // 10 MiB upper bound on request body size.
 // injected so each handler stays trivially testable.
 type Server struct {
 	clientset kubernetes.Interface
-	affinity  affinity.Store
+	store     affinity.Store
 }
 
 // NewServer constructs a Server with the supplied dependencies.
 func NewServer(clientset kubernetes.Interface, store affinity.Store) *Server {
-	return &Server{clientset: clientset, affinity: store}
+	return &Server{clientset: clientset, store: store}
 }
 
 // Routes returns the HTTP handler exposing every webhook endpoint.
@@ -71,7 +71,7 @@ func (s *Server) serveAdmission(
 	logger := log.WithFunc("serveAdmission")
 	review, err := decodeAdmissionReview(r)
 	if err != nil {
-		logger.Warn(r.Context(), "decode admission review")
+		logger.Warnf(r.Context(), "decode admission review: %v", err)
 		http.Error(w, "decode admission review", http.StatusBadRequest)
 		return
 	}
@@ -93,12 +93,8 @@ func (s *Server) serveAdmission(
 }
 
 func decodeAdmissionReview(r *http.Request) (*admissionv1.AdmissionReview, error) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxAdmissionBody))
-	if err != nil {
-		return nil, err
-	}
 	var review admissionv1.AdmissionReview
-	if err := json.Unmarshal(body, &review); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxAdmissionBody)).Decode(&review); err != nil {
 		return nil, err
 	}
 	return &review, nil

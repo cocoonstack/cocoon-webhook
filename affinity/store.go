@@ -15,6 +15,10 @@ const (
 	// name is appended verbatim, so cocoonstack.io/pool=gpu becomes
 	// "cocoon-affinity-gpu".
 	configMapPrefix = "cocoon-affinity-"
+
+	// managedByValue is the value written to the meta.LabelManagedBy
+	// label on every per-pool ConfigMap so the reaper can find them.
+	managedByValue = "cocoon-webhook"
 )
 
 // configMapName returns the ConfigMap name that stores reservations

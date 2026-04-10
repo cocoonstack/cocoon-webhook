@@ -105,7 +105,7 @@ func (r *Reaper) reapOnce(ctx context.Context) error {
 // namespace by label and returns the pool names.
 func (r *Reaper) discoverPools(ctx context.Context) ([]string, error) {
 	cms, err := r.Client.CoreV1().ConfigMaps(systemNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: meta.LabelManagedBy + "=cocoon-webhook",
+		LabelSelector: meta.LabelManagedBy + "=" + managedByValue,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list affinity configmaps: %w", err)

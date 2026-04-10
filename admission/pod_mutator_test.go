@@ -64,10 +64,6 @@ func TestPodNodePoolPrecedence(t *testing.T) {
 	}
 }
 
-// Note: isOwnedByCocoonSet was inlined into mutatePod via
-// meta.IsOwnedByCocoonSet; the cocoon-common test suite covers the
-// helper directly so we no longer need a webhook-side test for it.
-
 func TestEscapeJSONPointer(t *testing.T) {
 	cases := map[string]string{
 		"vm.cocoonstack.io/name": "vm.cocoonstack.io~1name",
