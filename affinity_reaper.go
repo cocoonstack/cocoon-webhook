@@ -90,6 +90,7 @@ func (r *Reaper) reapOnce(ctx context.Context) error {
 				logger.Warnf(ctx, "release %s/%s slot %d: %v", entry.Namespace, entry.Deployment, entry.Slot, err)
 				continue
 			}
+			recordRelease(entry.Pool)
 			logger.Infof(ctx, "released orphan reservation pool=%s ns=%s deploy=%s slot=%d pod=%s",
 				entry.Pool, entry.Namespace, entry.Deployment, entry.Slot, entry.Pod)
 		}

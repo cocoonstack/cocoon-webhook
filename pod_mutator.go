@@ -29,25 +29,30 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	req := review.Request
 
 	if req.Kind.Kind != "Pod" {
+		recordAdmission(HandlerMutate, DecisionAllow)
 		return allowResponse()
 	}
 
 	var pod corev1.Pod
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 		logger.Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
+		recordAdmission(HandlerMutate, DecisionError)
 		return allowResponse()
 	}
 
 	if !meta.HasCocoonToleration(pod.Spec.Tolerations) {
+		recordAdmission(HandlerMutate, DecisionAllow)
 		return allowResponse()
 	}
 
 	if isOwnedByCocoonSet(&pod) {
 		// CocoonSet-managed pods come pre-annotated by the operator.
+		recordAdmission(HandlerMutate, DecisionAllow)
 		return allowResponse()
 	}
 
 	if pod.Spec.NodeName != "" {
+		recordAdmission(HandlerMutate, DecisionAllow)
 		return allowResponse()
 	}
 
@@ -62,16 +67,20 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 		// Preserve cluster availability if the affinity store is
 		// unreachable: log loudly and let the pod through unmutated.
 		logger.Errorf(ctx, err, "reserve affinity for pod %s/%s", req.Namespace, podDisplayName(&pod, req))
+		recordAdmission(HandlerMutate, DecisionAffinityFailed)
 		return allowResponse()
 	}
+	recordReservation(pool)
 
 	patch, err := buildMutatePatch(&pod, res)
 	if err != nil {
 		logger.Errorf(ctx, err, "build mutate patch for pod %s/%s", req.Namespace, podDisplayName(&pod, req))
+		recordAdmission(HandlerMutate, DecisionError)
 		return allowResponse()
 	}
 
 	logger.Infof(ctx, "mutate %s/%s: vm=%s node=%s", req.Namespace, podDisplayName(&pod, req), res.VMName, res.Node)
+	recordAdmission(HandlerMutate, DecisionAllow)
 
 	pt := admissionv1.PatchTypeJSONPatch
 	return &admissionv1.AdmissionResponse{

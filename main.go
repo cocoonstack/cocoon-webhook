@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/projecteru2/core/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/client-go/kubernetes"
 
 	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
@@ -28,9 +29,10 @@ import (
 )
 
 const (
-	defaultCertFile = "/etc/cocoon/webhook/certs/tls.crt"
-	defaultKeyFile  = "/etc/cocoon/webhook/certs/tls.key"
-	defaultListen   = ":8443"
+	defaultCertFile      = "/etc/cocoon/webhook/certs/tls.crt"
+	defaultKeyFile       = "/etc/cocoon/webhook/certs/tls.key"
+	defaultListen        = ":8443"
+	defaultMetricsListen = ":9090"
 )
 
 func main() {
@@ -39,9 +41,12 @@ func main() {
 
 	logger := log.WithFunc("main")
 
+	RegisterMetrics(prometheus.DefaultRegisterer)
+
 	certFile := envOrDefault("TLS_CERT", defaultCertFile)
 	keyFile := envOrDefault("TLS_KEY", defaultKeyFile)
 	listen := envOrDefault("LISTEN_ADDR", defaultListen)
+	metricsListen := envOrDefault("METRICS_ADDR", defaultMetricsListen)
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -76,6 +81,20 @@ func main() {
 
 	go reaper.Run(ctx)
 
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", metricsHandler())
+	metricsServer := &http.Server{
+		Addr:              metricsListen,
+		Handler:           metricsMux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	go func() {
+		logger.Infof(ctx, "cocoon-webhook metrics listening on %s", metricsListen)
+		if serveErr := metricsServer.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			logger.Errorf(ctx, serveErr, "metrics listen and serve")
+		}
+	}()
+
 	go func() {
 		logger.Infof(ctx, "cocoon-webhook %s started (rev=%s built=%s) on %s",
 			version.VERSION, version.REVISION, version.BUILTAT, listen)
@@ -85,8 +104,12 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	if err := server.Shutdown(context.Background()); err != nil {
-		logger.Warnf(ctx, "shutdown: %v", err)
+	shutdownCtx := context.Background()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Warnf(shutdownCtx, "shutdown admission: %v", err)
+	}
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		logger.Warnf(shutdownCtx, "shutdown metrics: %v", err)
 	}
 }
 

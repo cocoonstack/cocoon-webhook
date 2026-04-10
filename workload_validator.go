@@ -79,6 +79,7 @@ func validateStatefulSetScale(ctx context.Context, req *admissionv1.AdmissionReq
 // checkScaleDown denies the request if newReplicas < oldReplicas.
 func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, kind string, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
 	if newReplicas >= oldReplicas {
+		recordAdmission(HandlerValidate, DecisionAllow)
 		return allowResponse()
 	}
 	msg := fmt.Sprintf(
@@ -86,6 +87,7 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, kind
 			"Use a CocoonHibernation CR to suspend individual agents.",
 		kind, req.Namespace, req.Name, oldReplicas, newReplicas)
 	log.WithFunc("checkScaleDown").Warn(ctx, msg)
+	recordAdmission(HandlerValidate, DecisionDeny)
 	return denyResponse(msg)
 }
 
