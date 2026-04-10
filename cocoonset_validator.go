@@ -4,16 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/projecteru2/core/log"
 	admissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1alpha1"
 )
-
-var rfc1123LabelRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
 // validateCocoonSet is the admission entry point for CocoonSet
 // CREATE / UPDATE. The CRD's OpenAPI schema covers most field-level
@@ -46,6 +44,12 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 // validateCocoonSetSpec returns the list of human-readable error
 // messages for any cross-field rule violations. An empty slice means
 // the spec passes business validation.
+//
+// Enum membership is delegated to the IsValid() methods on the
+// cocoon-common enum types so the operator and the webhook share
+// one source of truth. The RFC 1123 label check uses
+// k8s.io/apimachinery/pkg/util/validation so future kube
+// validation tweaks land here for free.
 func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	var errs []string
 
@@ -55,10 +59,10 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	if cs.Spec.Agent.Replicas < 0 {
 		errs = append(errs, fmt.Sprintf("spec.agent.replicas must be >= 0, got %d", cs.Spec.Agent.Replicas))
 	}
-	if cs.Spec.Agent.Mode != "" && !validAgentMode(cs.Spec.Agent.Mode) {
+	if cs.Spec.Agent.Mode != "" && !cs.Spec.Agent.Mode.IsValid() {
 		errs = append(errs, fmt.Sprintf("spec.agent.mode must be clone or run, got %q", cs.Spec.Agent.Mode))
 	}
-	if cs.Spec.Agent.OS != "" && !validOSType(cs.Spec.Agent.OS) {
+	if cs.Spec.Agent.OS != "" && !cs.Spec.Agent.OS.IsValid() {
 		errs = append(errs, fmt.Sprintf("spec.agent.os must be linux or windows, got %q", cs.Spec.Agent.OS))
 	}
 
@@ -69,18 +73,18 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			errs = append(errs, path+".name is required")
 			continue
 		}
-		if !rfc1123LabelRE.MatchString(tb.Name) {
-			errs = append(errs, fmt.Sprintf("%s.name %q must match RFC 1123 label", path, tb.Name))
+		if vErrs := validation.IsDNS1123Label(tb.Name); len(vErrs) > 0 {
+			errs = append(errs, fmt.Sprintf("%s.name %q must match RFC 1123 label: %s", path, tb.Name, strings.Join(vErrs, "; ")))
 		}
 		if seen[tb.Name] {
 			errs = append(errs, fmt.Sprintf("%s.name %q duplicates an earlier toolbox", path, tb.Name))
 		}
 		seen[tb.Name] = true
 
-		if tb.Mode != "" && !validToolboxMode(tb.Mode) {
+		if tb.Mode != "" && !tb.Mode.IsValid() {
 			errs = append(errs, fmt.Sprintf("%s.mode must be run, clone, or static, got %q", path, tb.Mode))
 		}
-		if tb.OS != "" && !validOSType(tb.OS) {
+		if tb.OS != "" && !tb.OS.IsValid() {
 			errs = append(errs, fmt.Sprintf("%s.os must be linux, windows, or android, got %q", path, tb.OS))
 		}
 		if tb.Mode == cocoonv1.ToolboxModeStatic {
@@ -95,27 +99,9 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		}
 	}
 
-	if cs.Spec.SnapshotPolicy != "" && !validSnapshotPolicy(cs.Spec.SnapshotPolicy) {
+	if cs.Spec.SnapshotPolicy != "" && !cs.Spec.SnapshotPolicy.IsValid() {
 		errs = append(errs, fmt.Sprintf("spec.snapshotPolicy must be always, main-only, or never, got %q", cs.Spec.SnapshotPolicy))
 	}
 
 	return errs
-}
-
-func validAgentMode(m cocoonv1.AgentMode) bool {
-	return m == cocoonv1.AgentModeClone || m == cocoonv1.AgentModeRun
-}
-
-func validToolboxMode(m cocoonv1.ToolboxMode) bool {
-	return m == cocoonv1.ToolboxModeRun || m == cocoonv1.ToolboxModeClone || m == cocoonv1.ToolboxModeStatic
-}
-
-func validOSType(o cocoonv1.OSType) bool {
-	return o == cocoonv1.OSLinux || o == cocoonv1.OSWindows || o == cocoonv1.OSAndroid
-}
-
-func validSnapshotPolicy(p cocoonv1.SnapshotPolicy) bool {
-	return p == cocoonv1.SnapshotPolicyAlways ||
-		p == cocoonv1.SnapshotPolicyMainOnly ||
-		p == cocoonv1.SnapshotPolicyNever
 }

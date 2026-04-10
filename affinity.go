@@ -66,8 +66,8 @@ type NodePicker interface {
 
 // nilNodePicker is the default NodePicker used when none is supplied.
 // It returns the empty node, which translates to "let the scheduler
-// decide" downstream — useful for tests and the bring-up phase before
-// the real picker lands.
+// decide" downstream — useful for tests that do not care about
+// node placement.
 type nilNodePicker struct{}
 
 func (nilNodePicker) Pick(_ context.Context, _ string) (string, error) {

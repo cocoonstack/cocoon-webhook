@@ -9,6 +9,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/cocoonstack/cocoon-common/meta"
 )
 
 const (
@@ -102,14 +104,14 @@ func (r *Reaper) reapOnce(ctx context.Context) error {
 // namespace by label and returns the pool names.
 func (r *Reaper) discoverPools(ctx context.Context) ([]string, error) {
 	cms, err := r.Client.CoreV1().ConfigMaps(affinitySystemNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/managed-by=cocoon-webhook",
+		LabelSelector: meta.LabelManagedBy + "=cocoon-webhook",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list affinity configmaps: %w", err)
 	}
 	pools := make([]string, 0, len(cms.Items))
 	for _, cm := range cms.Items {
-		if pool, ok := cm.Labels[nodePoolLabel]; ok && pool != "" {
+		if pool, ok := cm.Labels[meta.LabelNodePool]; ok && pool != "" {
 			pools = append(pools, pool)
 		}
 	}

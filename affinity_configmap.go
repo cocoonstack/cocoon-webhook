@@ -158,8 +158,8 @@ func (s *ConfigMapStore) fetchOrInitConfigMap(ctx context.Context, pool string) 
 				Name:      name,
 				Namespace: affinitySystemNamespace,
 				Labels: map[string]string{
-					"app.kubernetes.io/managed-by": "cocoon-webhook",
-					"cocoonstack.io/pool":          pool,
+					meta.LabelManagedBy: "cocoon-webhook",
+					meta.LabelNodePool:  pool,
 				},
 			},
 			Data: map[string]string{},
@@ -174,16 +174,19 @@ func (s *ConfigMapStore) persist(ctx context.Context, cm *corev1.ConfigMap, isNe
 	if isNew {
 		if _, err := cms.Create(ctx, cm, metav1.CreateOptions{}); err != nil {
 			if apierrors.IsAlreadyExists(err) {
+				// Convert to a Conflict so retry.RetryOnConflict
+				// loops back through fetchOrInitConfigMap on the
+				// next attempt.
 				return apierrors.NewConflict(schema.GroupResource{Resource: "configmaps"}, cm.Name, err)
 			}
 			return fmt.Errorf("create configmap %s: %w", cm.Name, err)
 		}
 		return nil
 	}
+	// retry.RetryOnConflict matches via apierrors.IsConflict even
+	// when the error is wrapped, so a single fmt.Errorf preserves
+	// both the message and the retry signal.
 	if _, err := cms.Update(ctx, cm, metav1.UpdateOptions{}); err != nil {
-		if apierrors.IsConflict(err) {
-			return err
-		}
 		return fmt.Errorf("update configmap %s: %w", cm.Name, err)
 	}
 	return nil

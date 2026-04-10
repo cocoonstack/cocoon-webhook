@@ -28,7 +28,7 @@ func TestPodNodePoolPrecedence(t *testing.T) {
 		{
 			name: "annotation",
 			pod: corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{nodePoolLabel: "ann"}},
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{meta.LabelNodePool: "ann"}},
 			},
 			want: "ann",
 		},
@@ -36,8 +36,8 @@ func TestPodNodePoolPrecedence(t *testing.T) {
 			name: "label beats annotation",
 			pod: corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      map[string]string{nodePoolLabel: "label"},
-					Annotations: map[string]string{nodePoolLabel: "ann"},
+					Labels:      map[string]string{meta.LabelNodePool: "label"},
+					Annotations: map[string]string{meta.LabelNodePool: "ann"},
 				},
 			},
 			want: "label",
@@ -46,9 +46,9 @@ func TestPodNodePoolPrecedence(t *testing.T) {
 			name: "nodeSelector beats label",
 			pod: corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{nodePoolLabel: "label"},
+					Labels: map[string]string{meta.LabelNodePool: "label"},
 				},
-				Spec: corev1.PodSpec{NodeSelector: map[string]string{nodePoolLabel: "selector"}},
+				Spec: corev1.PodSpec{NodeSelector: map[string]string{meta.LabelNodePool: "selector"}},
 			},
 			want: "selector",
 		},
@@ -63,24 +63,9 @@ func TestPodNodePoolPrecedence(t *testing.T) {
 	}
 }
 
-func TestIsOwnedByCocoonSet(t *testing.T) {
-	yes := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			OwnerReferences: []metav1.OwnerReference{{Kind: meta.KindCocoonSet, Name: "x"}},
-		},
-	}
-	no := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			OwnerReferences: []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "x"}},
-		},
-	}
-	if !isOwnedByCocoonSet(&yes) {
-		t.Errorf("CocoonSet ownerref should be detected")
-	}
-	if isOwnedByCocoonSet(&no) {
-		t.Errorf("non-CocoonSet ownerref should not match")
-	}
-}
+// Note: isOwnedByCocoonSet was inlined into mutatePod via
+// meta.IsOwnedByCocoonSet; the cocoon-common test suite covers the
+// helper directly so we no longer need a webhook-side test for it.
 
 func TestEscapeJSONPointer(t *testing.T) {
 	cases := map[string]string{

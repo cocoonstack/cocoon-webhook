@@ -35,6 +35,21 @@ const (
 	defaultMetricsListen = ":9090"
 )
 
+// envDuration parses a duration env var. Empty / unparseable falls
+// back to the supplied default so the binary stays bootable when
+// an operator typoes the override.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
+}
+
 func main() {
 	ctx := context.Background()
 	commonlog.Setup(ctx, "WEBHOOK_LOG_LEVEL")
@@ -65,6 +80,8 @@ func main() {
 	picker := NewLeastUsedPicker(clientset)
 	affinityStore := NewConfigMapStore(clientset, picker)
 	reaper := NewReaper(affinityStore, clientset)
+	reaper.Interval = envDuration("REAPER_INTERVAL", reaper.Interval)
+	reaper.Grace = envDuration("REAPER_GRACE", reaper.Grace)
 
 	server := &http.Server{
 		Addr:              listen,

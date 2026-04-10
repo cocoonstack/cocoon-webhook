@@ -45,7 +45,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 		return allowResponse()
 	}
 
-	if isOwnedByCocoonSet(&pod) {
+	if meta.IsOwnedByCocoonSet(pod.OwnerReferences) {
 		// CocoonSet-managed pods come pre-annotated by the operator.
 		recordAdmission(HandlerMutate, DecisionAllow)
 		return allowResponse()
@@ -90,19 +90,6 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	}
 }
 
-// isOwnedByCocoonSet reports whether any of the pod's OwnerReferences
-// point at a CocoonSet. CocoonSet-managed pods come from the
-// operator already carrying the full meta.VMSpec contract; the
-// webhook leaves them alone.
-func isOwnedByCocoonSet(pod *corev1.Pod) bool {
-	for _, ref := range pod.OwnerReferences {
-		if ref.Kind == meta.KindCocoonSet {
-			return true
-		}
-	}
-	return false
-}
-
 // podDisplayName returns the most useful identifier for log lines.
 // Pods created via a controller may have an empty Name on the
 // admission request (the API server fills it in after admission); in
@@ -121,13 +108,13 @@ func podDisplayName(pod *corev1.Pod, req *admissionv1.AdmissionRequest) string {
 // order: nodeSelector[cocoonstack.io/pool] -> labels[cocoonstack.io/pool]
 // -> annotations[cocoonstack.io/pool] -> default.
 func podNodePool(pod *corev1.Pod) string {
-	if v := pod.Spec.NodeSelector[nodePoolLabel]; v != "" {
+	if v := pod.Spec.NodeSelector[meta.LabelNodePool]; v != "" {
 		return v
 	}
-	if v := pod.Labels[nodePoolLabel]; v != "" {
+	if v := pod.Labels[meta.LabelNodePool]; v != "" {
 		return v
 	}
-	if v := pod.Annotations[nodePoolLabel]; v != "" {
+	if v := pod.Annotations[meta.LabelNodePool]; v != "" {
 		return v
 	}
 	return defaultNodePool

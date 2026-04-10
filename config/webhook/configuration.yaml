@@ -12,7 +12,7 @@ webhooks:
     timeoutSeconds: 5
     objectSelector:
       matchExpressions:
-        - key: cocoonstack.io/managed
+        - key: cocoonset.cocoonstack.io/managed
           operator: NotIn
           values: ["false"]
     rules:

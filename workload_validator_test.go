@@ -47,7 +47,7 @@ func TestCheckScaleDownDeniesDecrement(t *testing.T) {
 func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 	old := newDeployment(5, true)
 	updated := newDeployment(2, true)
-	resp := validateDeploymentScale(context.Background(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateScaleDown[appsv1.Deployment](context.Background(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon scale-down should be blocked")
 	}
@@ -56,7 +56,7 @@ func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 	old := newDeployment(5, false)
 	updated := newDeployment(2, false)
-	resp := validateDeploymentScale(context.Background(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateScaleDown[appsv1.Deployment](context.Background(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if !resp.Allowed {
 		t.Errorf("non-cocoon deployment should pass through")
 	}
@@ -65,7 +65,7 @@ func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 func TestValidateStatefulSetScaleDownBlocked(t *testing.T) {
 	old := newStatefulSet(5, true)
 	updated := newStatefulSet(2, true)
-	resp := validateStatefulSetScale(context.Background(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
+	resp := validateScaleDown[appsv1.StatefulSet](context.Background(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon statefulset scale-down should be blocked")
 	}

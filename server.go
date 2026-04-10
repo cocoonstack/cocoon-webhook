@@ -42,10 +42,6 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
-	// Distinguish liveness (always ok once the binary is up) from readiness
-	// (ok only once the dependencies the webhook needs to serve traffic are
-	// reachable). For now both are trivially ok; later commits will plumb
-	// real probes through s.clientset.
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ready"))
 }

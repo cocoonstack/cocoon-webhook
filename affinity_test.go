@@ -8,6 +8,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"github.com/cocoonstack/cocoon-common/meta"
 )
 
 func TestAllocateSlotEmptyEntries(t *testing.T) {
@@ -120,8 +122,8 @@ func TestConfigMapStoreReserveCreatesNewConfigMap(t *testing.T) {
 	if len(cm.Data) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(cm.Data))
 	}
-	if cm.Labels[nodePoolLabel] != "default" {
-		t.Errorf("pool label: %q", cm.Labels[nodePoolLabel])
+	if cm.Labels[meta.LabelNodePool] != "default" {
+		t.Errorf("pool label: %q", cm.Labels[meta.LabelNodePool])
 	}
 }
 
