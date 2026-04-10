@@ -57,7 +57,9 @@ func main() {
 		logger.Fatalf(ctx, err, "build clientset: %v", err)
 	}
 
-	affinityStore := NewConfigMapStore(clientset, nil)
+	picker := NewLeastUsedPicker(clientset)
+	affinityStore := NewConfigMapStore(clientset, picker)
+	reaper := NewReaper(affinityStore, clientset)
 
 	server := &http.Server{
 		Addr:              listen,
@@ -71,6 +73,8 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	go reaper.Run(ctx)
 
 	go func() {
 		logger.Infof(ctx, "cocoon-webhook %s started (rev=%s built=%s) on %s",
