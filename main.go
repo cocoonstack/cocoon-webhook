@@ -20,7 +20,9 @@ import (
 	"time"
 
 	"github.com/projecteru2/core/log"
+	"k8s.io/client-go/kubernetes"
 
+	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
 	commonlog "github.com/cocoonstack/cocoon-common/log"
 	"github.com/cocoonstack/cocoon-webhook/version"
 )
@@ -46,15 +48,18 @@ func main() {
 		logger.Fatalf(ctx, err, "load TLS keypair: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	kubeConfig, err := commonk8s.LoadConfig()
+	if err != nil {
+		logger.Fatalf(ctx, err, "load kubeconfig: %v", err)
+	}
+	clientset, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		logger.Fatalf(ctx, err, "build clientset: %v", err)
+	}
 
 	server := &http.Server{
 		Addr:              listen,
-		Handler:           mux,
+		Handler:           NewServer(clientset).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
