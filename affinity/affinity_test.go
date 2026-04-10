@@ -95,7 +95,7 @@ func TestConfigMapStoreReserveCreatesNewConfigMap(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := NewConfigMapStore(client, fixedNodePicker("node-a"))
 
-	res, err := store.Reserve(context.Background(), ReserveRequest{
+	res, err := store.Reserve(t.Context(), ReserveRequest{
 		Pool:       "default",
 		Namespace:  "ns",
 		Deployment: "demo",
@@ -114,7 +114,7 @@ func TestConfigMapStoreReserveCreatesNewConfigMap(t *testing.T) {
 		t.Errorf("slot: %d", res.Slot)
 	}
 
-	cm, err := client.CoreV1().ConfigMaps(systemNamespace).Get(context.Background(), configMapName("default"), metav1.GetOptions{})
+	cm, err := client.CoreV1().ConfigMaps(systemNamespace).Get(t.Context(), configMapName("default"), metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("get cm: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestConfigMapStoreReserveReusesExistingNode(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := NewConfigMapStore(client, fixedNodePicker("first-node"))
 
-	first, err := store.Reserve(context.Background(), ReserveRequest{
+	first, err := store.Reserve(t.Context(), ReserveRequest{
 		Pool: "default", Namespace: "ns", Deployment: "demo", PodName: "demo-0",
 	})
 	if err != nil {
@@ -140,7 +140,7 @@ func TestConfigMapStoreReserveReusesExistingNode(t *testing.T) {
 	// Even if the picker would now return a different node, the store
 	// should re-use first.Node because slot 0 already has a pin.
 	store.Picker = fixedNodePicker("never-picked")
-	second, err := store.Reserve(context.Background(), ReserveRequest{
+	second, err := store.Reserve(t.Context(), ReserveRequest{
 		Pool: "default", Namespace: "ns", Deployment: "demo", PodName: "demo-0",
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func TestConfigMapStoreReserveReusesExistingNode(t *testing.T) {
 func TestConfigMapStoreReleaseRemovesEntry(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := NewConfigMapStore(client, fixedNodePicker("node-a"))
-	ctx := context.Background()
+	ctx := t.Context()
 	if _, err := store.Reserve(ctx, ReserveRequest{Pool: "default", Namespace: "ns", Deployment: "demo", PodName: "demo-0"}); err != nil {
 		t.Fatalf("reserve: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestConfigMapStoreReleaseRemovesEntry(t *testing.T) {
 func TestConfigMapStoreList(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := NewConfigMapStore(client, fixedNodePicker("node-a"))
-	ctx := context.Background()
+	ctx := t.Context()
 	for _, name := range []string{"demo-0", "demo-1", "demo-2"} {
 		if _, err := store.Reserve(ctx, ReserveRequest{Pool: "default", Namespace: "ns", Deployment: "demo", PodName: name}); err != nil {
 			t.Fatalf("reserve %s: %v", name, err)
@@ -200,7 +200,7 @@ func TestConfigMapStoreList(t *testing.T) {
 func TestConfigMapStoreListMissingConfigMap(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := NewConfigMapStore(client, nil)
-	got, err := store.List(context.Background(), "missing-pool")
+	got, err := store.List(t.Context(), "missing-pool")
 	if err != nil {
 		t.Fatalf("list missing pool: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestConfigMapStoreListMissingConfigMap(t *testing.T) {
 func TestConfigMapStoreReserveBarePod(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	store := NewConfigMapStore(client, nil)
-	res, err := store.Reserve(context.Background(), ReserveRequest{
+	res, err := store.Reserve(t.Context(), ReserveRequest{
 		Pool:      "default",
 		Namespace: "ns",
 		PodName:   "alone",
@@ -247,7 +247,7 @@ func (n fixedNodePicker) Pick(_ context.Context, _ string) (string, error) {
 // Sanity check that the fake client behaves the way the test pattern assumes.
 func TestFakeClientsetSanity(t *testing.T) {
 	client := fake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: systemNamespace}})
-	_, err := client.CoreV1().Namespaces().Get(context.Background(), systemNamespace, metav1.GetOptions{})
+	_, err := client.CoreV1().Namespaces().Get(t.Context(), systemNamespace, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("fake clientset namespace lookup: %v", err)
 	}

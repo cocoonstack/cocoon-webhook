@@ -121,7 +121,7 @@ func TestBuildMutatePatchSkipsNodeWhenEmpty(t *testing.T) {
 func TestMutatePodAllowsNonCocoonPod(t *testing.T) {
 	srv := newTestServer(t)
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"}}
-	resp := srv.mutatePod(context.Background(), buildPodReview(t, pod))
+	resp := srv.mutatePod(t.Context(), buildPodReview(t, pod))
 	if !resp.Allowed {
 		t.Errorf("non-cocoon pod should be allowed")
 	}
@@ -144,7 +144,7 @@ func TestMutatePodAllowsCocoonSetOwnedPod(t *testing.T) {
 			Tolerations: []corev1.Toleration{{Key: meta.TolerationKey}},
 		},
 	}
-	resp := srv.mutatePod(context.Background(), buildPodReview(t, pod))
+	resp := srv.mutatePod(t.Context(), buildPodReview(t, pod))
 	if !resp.Allowed {
 		t.Errorf("cocoonset-owned pod should be allowed")
 	}
@@ -167,7 +167,7 @@ func TestMutatePodPatchesCocoonPod(t *testing.T) {
 			Tolerations: []corev1.Toleration{{Key: meta.TolerationKey}},
 		},
 	}
-	resp := srv.mutatePod(context.Background(), buildPodReview(t, pod))
+	resp := srv.mutatePod(t.Context(), buildPodReview(t, pod))
 	if !resp.Allowed {
 		t.Errorf("cocoon pod should be allowed")
 	}

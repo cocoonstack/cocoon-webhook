@@ -5,17 +5,17 @@ metadata:
   labels:
     app.kubernetes.io/name: cocoon-webhook
 rules:
-  # Pods are listed by the LeastUsedPicker (per node) and probed by
-  # the Reaper (per namespace) to detect orphan reservations.
+  # Pods feed a shared informer cache that backs the LeastUsedPicker
+  # (admission hot path) and the Reaper's pod-existence checks.
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
 
-  # Nodes are listed by the LeastUsedPicker, scoped by the
-  # cocoonstack.io/pool label.
+  # Nodes feed a shared informer cache that backs the LeastUsedPicker
+  # node lookup, scoped by the cocoonstack.io/pool label.
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
 
   # The webhook owns one ConfigMap per cocoon node pool in
   # cocoon-system; create / update / delete are needed for the

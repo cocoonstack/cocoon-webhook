@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/projecteru2/core/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/env"
 
@@ -38,6 +40,13 @@ const (
 	defaultKeyFile       = "/etc/cocoon/webhook/certs/tls.key"
 	defaultListen        = ":8443"
 	defaultMetricsListen = ":9090"
+
+	// informerResync is set to 0 because neither the picker nor the
+	// reaper register UpdateFunc handlers — they only read the
+	// lister. The watch stream is authoritative, and a periodic
+	// resync would re-emit every cached object on every tick for no
+	// downstream benefit.
+	informerResync = 0
 )
 
 // envDuration parses a duration env var. Empty / unparseable falls
@@ -82,9 +91,16 @@ func main() {
 		logger.Fatalf(ctx, err, "build clientset: %v", err)
 	}
 
-	picker := affinity.NewLeastUsedPicker(clientset)
+	// Shared informer factory: pod and node informers feed both the
+	// admission hot path (LeastUsedPicker) and the background reaper.
+	// Calling Lister() registers each informer with the factory.
+	informerFactory := informers.NewSharedInformerFactory(clientset, informerResync)
+	podLister := informerFactory.Core().V1().Pods().Lister()
+	nodeLister := informerFactory.Core().V1().Nodes().Lister()
+
+	picker := affinity.NewLeastUsedPicker(podLister, nodeLister)
 	affinityStore := affinity.NewConfigMapStore(clientset, picker)
-	reaper := affinity.NewReaper(affinityStore, clientset)
+	reaper := affinity.NewReaper(affinityStore, clientset, podLister)
 	reaper.Interval = envDuration("REAPER_INTERVAL", reaper.Interval)
 	reaper.Grace = envDuration("REAPER_GRACE", reaper.Grace)
 
@@ -100,6 +116,23 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	// Start the informers and block until their caches are warm.
+	// Serving admission requests before sync would mean the picker
+	// sees an empty pod set and concentrates every fresh pod onto
+	// whichever node sorts first alphabetically.
+	informerFactory.Start(ctx.Done())
+	var unsynced []string
+	for typ, ok := range informerFactory.WaitForCacheSync(ctx.Done()) {
+		if !ok {
+			unsynced = append(unsynced, typ.String())
+		}
+	}
+	if len(unsynced) > 0 {
+		syncErr := fmt.Errorf("informer cache sync failed for %v", unsynced)
+		logger.Fatalf(ctx, syncErr, "informer cache sync: %v", syncErr)
+	}
+	logger.Info(ctx, "informer caches synced")
 
 	go reaper.Run(ctx)
 

@@ -1,7 +1,6 @@
 package admission
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -15,7 +14,7 @@ import (
 )
 
 func TestCheckScaleDownAllowsScaleUp(t *testing.T) {
-	resp := checkScaleDown(context.Background(), &admissionv1.AdmissionRequest{
+	resp := checkScaleDown(t.Context(), &admissionv1.AdmissionRequest{
 		Kind:      metav1.GroupVersionKind{Kind: "Deployment"},
 		Namespace: "ns", Name: "demo",
 	}, 2, 5)
@@ -25,7 +24,7 @@ func TestCheckScaleDownAllowsScaleUp(t *testing.T) {
 }
 
 func TestCheckScaleDownAllowsEqual(t *testing.T) {
-	resp := checkScaleDown(context.Background(), &admissionv1.AdmissionRequest{
+	resp := checkScaleDown(t.Context(), &admissionv1.AdmissionRequest{
 		Kind:      metav1.GroupVersionKind{Kind: "Deployment"},
 		Namespace: "ns", Name: "demo",
 	}, 3, 3)
@@ -35,7 +34,7 @@ func TestCheckScaleDownAllowsEqual(t *testing.T) {
 }
 
 func TestCheckScaleDownDeniesDecrement(t *testing.T) {
-	resp := checkScaleDown(context.Background(), &admissionv1.AdmissionRequest{
+	resp := checkScaleDown(t.Context(), &admissionv1.AdmissionRequest{
 		Kind:      metav1.GroupVersionKind{Kind: "Deployment"},
 		Namespace: "ns", Name: "demo",
 	}, 5, 2)
@@ -50,7 +49,7 @@ func TestCheckScaleDownDeniesDecrement(t *testing.T) {
 func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 	old := newDeployment(5, true)
 	updated := newDeployment(2, true)
-	resp := validateScaleDown[appsv1.Deployment](context.Background(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateScaleDown[appsv1.Deployment](t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon scale-down should be blocked")
 	}
@@ -59,7 +58,7 @@ func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 	old := newDeployment(5, false)
 	updated := newDeployment(2, false)
-	resp := validateScaleDown[appsv1.Deployment](context.Background(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateScaleDown[appsv1.Deployment](t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if !resp.Allowed {
 		t.Errorf("non-cocoon deployment should pass through")
 	}
@@ -68,7 +67,7 @@ func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 func TestValidateStatefulSetScaleDownBlocked(t *testing.T) {
 	old := newStatefulSet(5, true)
 	updated := newStatefulSet(2, true)
-	resp := validateScaleDown[appsv1.StatefulSet](context.Background(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
+	resp := validateScaleDown[appsv1.StatefulSet](t.Context(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon statefulset scale-down should be blocked")
 	}
@@ -78,7 +77,7 @@ func TestServerValidateWorkloadIgnoresCreate(t *testing.T) {
 	srv := newTestServer(t)
 	review := buildUpdateReview(t, "Deployment", newDeployment(5, true), newDeployment(2, true))
 	review.Request.Operation = admissionv1.Create
-	resp := srv.validateWorkload(context.Background(), review)
+	resp := srv.validateWorkload(t.Context(), review)
 	if !resp.Allowed {
 		t.Errorf("CREATE operation should pass through")
 	}

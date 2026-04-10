@@ -9,6 +9,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 
 	"github.com/cocoonstack/cocoon-common/meta"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
@@ -27,21 +28,29 @@ const (
 
 // Reaper periodically scans every per-pool affinity ConfigMap and
 // releases reservations whose backing pod no longer exists.
+//
+// Pod liveness checks are served from a shared pod informer cache,
+// so a sweep across N reservations is N in-memory lookups instead
+// of N apiserver GETs.
 type Reaper struct {
-	Store    Store
-	Client   kubernetes.Interface
-	Interval time.Duration
-	Grace    time.Duration
+	Store     Store
+	Client    kubernetes.Interface
+	PodLister corelisters.PodLister
+	Interval  time.Duration
+	Grace     time.Duration
 }
 
 // NewReaper constructs a Reaper with sensible defaults filled in for
-// any zero-valued field.
-func NewReaper(store Store, client kubernetes.Interface) *Reaper {
+// any zero-valued field. The pod lister must come from a started,
+// cache-synced informer; the client is only used to list the
+// per-pool affinity ConfigMaps.
+func NewReaper(store Store, client kubernetes.Interface, pods corelisters.PodLister) *Reaper {
 	return &Reaper{
-		Store:    store,
-		Client:   client,
-		Interval: reaperDefaultInterval,
-		Grace:    reaperDefaultGrace,
+		Store:     store,
+		Client:    client,
+		PodLister: pods,
+		Interval:  reaperDefaultInterval,
+		Grace:     reaperDefaultGrace,
 	}
 }
 
@@ -122,14 +131,14 @@ func (r *Reaper) discoverPools(ctx context.Context) ([]string, error) {
 // shouldRelease decides whether a reservation is stale enough to drop.
 // Conditions: the pod no longer exists in its namespace, AND the
 // reservation is older than the grace window.
-func (r *Reaper) shouldRelease(ctx context.Context, entry Reservation, now time.Time) bool {
+func (r *Reaper) shouldRelease(_ context.Context, entry Reservation, now time.Time) bool {
 	if entry.Pod == "" {
 		return false
 	}
 	if now.Sub(entry.UpdatedAt) < r.Grace {
 		return false
 	}
-	_, err := r.Client.CoreV1().Pods(entry.Namespace).Get(ctx, entry.Pod, metav1.GetOptions{})
+	_, err := r.PodLister.Pods(entry.Namespace).Get(entry.Pod)
 	if err == nil {
 		return false
 	}
