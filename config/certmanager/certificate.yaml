@@ -1,0 +1,31 @@
+# cert-manager objects that issue the TLS material the webhook
+# Deployment expects under /etc/cocoon/webhook/certs. The CA bundle
+# is also injected into the WebhookConfiguration via the
+# cert-manager.io/inject-ca-from annotation in webhook/configuration.yaml.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: cocoon-webhook-selfsigned
+  namespace: cocoon-system
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cocoon-webhook-tls
+  namespace: cocoon-system
+spec:
+  secretName: cocoon-webhook-tls
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days
+  subject:
+    organizations:
+      - cocoonstack
+  commonName: cocoon-webhook.cocoon-system.svc
+  dnsNames:
+    - cocoon-webhook.cocoon-system.svc
+    - cocoon-webhook.cocoon-system.svc.cluster.local
+  issuerRef:
+    name: cocoon-webhook-selfsigned
+    kind: Issuer

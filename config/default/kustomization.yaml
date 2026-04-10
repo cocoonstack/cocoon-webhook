@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# kubectl apply -k config/default installs the entire webhook stack:
+# namespace, RBAC, cert-manager Issuer + Certificate, Deployment +
+# Service, and the Mutating / Validating webhook configurations.
+#
+# Prerequisite: cert-manager must already be installed in the
+# cluster (the Certificate and inject-ca-from annotations depend on
+# it).
+resources:
+  - namespace.yaml
+  - ../rbac
+  - ../certmanager
+  - ../manager
+  - ../webhook

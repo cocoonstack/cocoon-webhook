@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cocoon-webhook
+  namespace: cocoon-system
+  labels:
+    app.kubernetes.io/name: cocoon-webhook
+    app.kubernetes.io/component: webhook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cocoon-webhook
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cocoon-webhook
+        app.kubernetes.io/component: webhook
+    spec:
+      serviceAccountName: cocoon-webhook
+      containers:
+        - name: webhook
+          image: ghcr.io/cocoonstack/cocoon-webhook:latest
+          imagePullPolicy: IfNotPresent
+          args: []
+          env:
+            - name: WEBHOOK_LOG_LEVEL
+              value: info
+            - name: TLS_CERT
+              value: /etc/cocoon/webhook/certs/tls.crt
+            - name: TLS_KEY
+              value: /etc/cocoon/webhook/certs/tls.key
+            - name: LISTEN_ADDR
+              value: :8443
+            - name: METRICS_ADDR
+              value: :9090
+          ports:
+            - name: webhook
+              containerPort: 8443
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: webhook
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: webhook
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/cocoon/webhook/certs
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: cocoon-webhook-tls
