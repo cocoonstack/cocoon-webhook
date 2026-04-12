@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -12,14 +11,11 @@ import (
 
 	"github.com/projecteru2/core/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
 
 	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
 	commonlog "github.com/cocoonstack/cocoon-common/log"
 	"github.com/cocoonstack/cocoon-webhook/admission"
-	"github.com/cocoonstack/cocoon-webhook/affinity"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 	"github.com/cocoonstack/cocoon-webhook/version"
 )
@@ -29,9 +25,6 @@ const (
 	defaultKeyFile       = "/etc/cocoon/webhook/certs/tls.key"
 	defaultListen        = ":8443"
 	defaultMetricsListen = ":9090"
-
-	// No UpdateFunc handlers registered, so periodic resync adds no value.
-	informerResync = 0
 )
 
 func main() {
@@ -61,26 +54,9 @@ func main() {
 		logger.Fatalf(ctx, err, "build clientset: %v", err)
 	}
 
-	informerFactory := informers.NewSharedInformerFactory(clientset, informerResync)
-
-	podInformer := informerFactory.Core().V1().Pods().Informer()
-	if err := podInformer.AddIndexers(cache.Indexers{
-		affinity.ByNodeIndex: affinity.NodeNameIndexFunc,
-	}); err != nil {
-		logger.Fatalf(ctx, err, "add pod byNode indexer: %v", err)
-	}
-	podLister := informerFactory.Core().V1().Pods().Lister()
-	nodeLister := informerFactory.Core().V1().Nodes().Lister()
-
-	picker := affinity.NewLeastUsedPicker(podInformer.GetIndexer(), nodeLister)
-	affinityStore := affinity.NewConfigMapStore(clientset, picker)
-	reaper := affinity.NewReaper(affinityStore, clientset, podLister,
-		commonk8s.EnvDuration("REAPER_INTERVAL", affinity.DefaultReaperInterval),
-		commonk8s.EnvDuration("REAPER_GRACE", affinity.DefaultReaperGrace))
-
 	server := &http.Server{
 		Addr:              listen,
-		Handler:           admission.NewServer(affinityStore, clientset).Routes(),
+		Handler:           admission.NewServer(clientset).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{cert},
@@ -90,21 +66,6 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
-	informerFactory.Start(ctx.Done())
-	var unsynced []string
-	for typ, ok := range informerFactory.WaitForCacheSync(ctx.Done()) {
-		if !ok {
-			unsynced = append(unsynced, typ.String())
-		}
-	}
-	if len(unsynced) > 0 {
-		syncErr := fmt.Errorf("informer cache sync failed for %v", unsynced)
-		logger.Fatalf(ctx, syncErr, "informer cache sync: %v", syncErr)
-	}
-	logger.Info(ctx, "informer caches synced")
-
-	go reaper.Run(ctx)
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", metrics.Handler())

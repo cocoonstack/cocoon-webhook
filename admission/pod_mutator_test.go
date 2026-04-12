@@ -1,7 +1,6 @@
 package admission
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -13,7 +12,6 @@ import (
 
 	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
 	"github.com/cocoonstack/cocoon-common/meta"
-	"github.com/cocoonstack/cocoon-webhook/affinity"
 )
 
 func TestPodNodePoolPrecedence(t *testing.T) {
@@ -78,47 +76,6 @@ func TestEscapeJSONPointer(t *testing.T) {
 	}
 }
 
-func TestBuildMutatePatchAddsAnnotationsMap(t *testing.T) {
-	pod := &corev1.Pod{}
-	res := affinity.Reservation{VMName: "vk-ns-demo-0", Node: "node-a"}
-	patch, err := buildMutatePatch(pod, res)
-	if err != nil {
-		t.Fatalf("buildMutatePatch: %v", err)
-	}
-	var ops []map[string]any
-	if err := json.Unmarshal(patch, &ops); err != nil {
-		t.Fatalf("decode patch: %v", err)
-	}
-	if len(ops) != 3 {
-		t.Fatalf("expected 3 ops (add annotations + vmname + nodeName), got %d", len(ops))
-	}
-	if ops[0]["path"] != "/metadata/annotations" {
-		t.Errorf("first op should add annotations object, got %+v", ops[0])
-	}
-	if ops[2]["path"] != "/spec/nodeName" || ops[2]["value"] != "node-a" {
-		t.Errorf("third op should pin nodeName, got %+v", ops[2])
-	}
-}
-
-func TestBuildMutatePatchSkipsNodeWhenEmpty(t *testing.T) {
-	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"x": "y"}}}
-	res := affinity.Reservation{VMName: "vk-ns-demo-0", Node: ""}
-	patch, err := buildMutatePatch(pod, res)
-	if err != nil {
-		t.Fatalf("buildMutatePatch: %v", err)
-	}
-	var ops []map[string]any
-	if err := json.Unmarshal(patch, &ops); err != nil {
-		t.Fatalf("decode patch: %v", err)
-	}
-	if len(ops) != 1 {
-		t.Fatalf("expected just the vmname op, got %d", len(ops))
-	}
-	if ops[0]["value"] != "vk-ns-demo-0" {
-		t.Errorf("vmname op value: %v", ops[0]["value"])
-	}
-}
-
 func TestMutatePodAllowsNonCocoonPod(t *testing.T) {
 	srv := newTestServer(t)
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"}}
@@ -154,7 +111,7 @@ func TestMutatePodAllowsCocoonSetOwnedPod(t *testing.T) {
 	}
 }
 
-func TestMutatePodPatchesCocoonPod(t *testing.T) {
+func TestMutatePodDeniesBareCocoonPod(t *testing.T) {
 	srv := newTestServer(t)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -169,32 +126,15 @@ func TestMutatePodPatchesCocoonPod(t *testing.T) {
 		},
 	}
 	resp := srv.mutatePod(t.Context(), buildPodReview(t, pod))
-	if !resp.Allowed {
-		t.Errorf("cocoon pod should be allowed")
+	if resp.Allowed {
+		t.Errorf("bare cocoon pod should be denied")
 	}
-	if len(resp.Patch) == 0 {
-		t.Fatalf("cocoon pod should be patched")
-	}
-	var ops []map[string]any
-	if err := json.Unmarshal(resp.Patch, &ops); err != nil {
-		t.Fatalf("decode patch: %v", err)
-	}
-	if len(ops) < 2 {
-		t.Fatalf("expected at least 2 ops, got %d", len(ops))
-	}
-}
-
-type fixedNodePicker string
-
-func (n fixedNodePicker) Pick(_ context.Context, _ string) (string, error) {
-	return string(n), nil
 }
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	client := fake.NewSimpleClientset()
-	store := affinity.NewConfigMapStore(client, fixedNodePicker("node-test"))
-	return NewServer(store, client)
+	return NewServer(client)
 }
 
 func buildPodReview(t *testing.T, pod *corev1.Pod) *admissionv1.AdmissionReview {

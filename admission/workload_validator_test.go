@@ -13,7 +13,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/cocoonstack/cocoon-common/meta"
-	"github.com/cocoonstack/cocoon-webhook/affinity"
 )
 
 func TestCheckScaleDownAllowsScaleUp(t *testing.T) {
@@ -134,8 +133,7 @@ func TestServerValidateWorkloadScaleSubresourceParentMissingAllowed(t *testing.T
 func newServerWithObjects(t *testing.T, objs ...runtime.Object) *Server {
 	t.Helper()
 	client := fake.NewSimpleClientset(objs...)
-	store := affinity.NewConfigMapStore(client, fixedNodePicker("node-test"))
-	return NewServer(store, client)
+	return NewServer(client)
 }
 
 func buildScaleReview(t *testing.T, resource string, oldReplicas, newReplicas int32) *admissionv1.AdmissionReview {

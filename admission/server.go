@@ -6,16 +6,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
-	"github.com/cocoonstack/cocoon-webhook/affinity"
 )
 
 type Server struct {
-	store  affinity.Store
 	client kubernetes.Interface
 }
 
-func NewServer(store affinity.Store, client kubernetes.Interface) *Server {
-	return &Server{store: store, client: client}
+func NewServer(client kubernetes.Interface) *Server {
+	return &Server{client: client}
 }
 
 func (s *Server) Routes() http.Handler {
