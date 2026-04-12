@@ -7,8 +7,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Metric labels and names. Kept as constants so handlers and tests
-// agree on the wire shape.
 const (
 	metricNamespace = "cocoon"
 	metricSubsystem = "webhook"
@@ -58,31 +56,22 @@ var (
 	)
 )
 
-// Register installs the collectors against the supplied registry.
-// Tests pass an isolated registry; production code calls this once
-// from main with prometheus.DefaultRegisterer.
 func Register(reg prometheus.Registerer) {
 	reg.MustRegister(admissionTotal, affinityReservations, affinityReleases)
 }
 
-// Handler returns the HTTP handler that exposes the prometheus
-// collectors. It is mounted on its own listener so the admission TLS
-// port stays focused on AdmissionReview traffic.
 func Handler() http.Handler {
 	return promhttp.Handler()
 }
 
-// RecordAdmission increments the admission counter.
 func RecordAdmission(handler, decision string) {
 	admissionTotal.WithLabelValues(handler, decision).Inc()
 }
 
-// RecordReservation increments the per-pool reservation counter.
 func RecordReservation(pool string) {
 	affinityReservations.WithLabelValues(pool).Inc()
 }
 
-// RecordRelease increments the per-pool release counter.
 func RecordRelease(pool string) {
 	affinityReleases.WithLabelValues(pool).Inc()
 }

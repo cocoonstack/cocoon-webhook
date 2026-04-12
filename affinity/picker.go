@@ -13,13 +13,8 @@ import (
 	"github.com/cocoonstack/cocoon-common/meta"
 )
 
-// ByNodeIndex is the informer-cache index name used to look up pods
-// by spec.nodeName. Registered once in main before the factory starts.
 const ByNodeIndex = "byNode"
 
-// NodeNameIndexFunc is the cache.IndexFunc for ByNodeIndex.
-// Pass it to podInformer.AddIndexers so the LeastUsedPicker can
-// look up pods by spec.nodeName.
 func NodeNameIndexFunc(obj any) ([]string, error) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
@@ -31,40 +26,23 @@ func NodeNameIndexFunc(obj any) ([]string, error) {
 	return []string{pod.Spec.NodeName}, nil
 }
 
-// PodIndexer looks up pods by the node they are scheduled on.
-// The informer's ByIndex method satisfies this when wired to the
-// ByNodeIndex indexer registered at startup.
 type PodIndexer interface {
 	ByIndex(indexName, indexedValue string) ([]any, error)
 }
 
 var _ NodePicker = (*LeastUsedPicker)(nil)
 
-// LeastUsedPicker picks the cocoon node in a pool that currently
-// hosts the fewest pods. Ties are broken alphabetically so the
-// outcome is deterministic across multiple webhook replicas.
-//
-// Both the node lookup (by pool label) and the pod count are served
-// from shared informer caches, so a Pick is a couple of in-memory
-// scans rather than two apiserver round trips on the admission hot
-// path.
+// LeastUsedPicker picks the pool node with the fewest pods, breaking ties alphabetically.
 type LeastUsedPicker struct {
 	podIndexer PodIndexer
 	nodeLister corelisters.NodeLister
 }
 
-// NewLeastUsedPicker constructs a LeastUsedPicker that reads from
-// the supplied informer-backed listers. Callers are responsible for
-// starting the informer factory and waiting for cache sync before
-// calling Pick.
 func NewLeastUsedPicker(pods PodIndexer, nodes corelisters.NodeLister) *LeastUsedPicker {
 	return &LeastUsedPicker{podIndexer: pods, nodeLister: nodes}
 }
 
-// Pick returns the name of the cocoon node in the pool that has the
-// fewest pods scheduled to it. Returns "" (with no error) when the
-// pool has no nodes — callers should treat that as "let the
-// scheduler decide".
+// Pick returns "" when the pool has no nodes (let the scheduler decide).
 func (p *LeastUsedPicker) Pick(_ context.Context, pool string) (string, error) {
 	if pool == "" {
 		return "", fmt.Errorf("pool must not be empty")
@@ -93,13 +71,7 @@ func (p *LeastUsedPicker) Pick(_ context.Context, pool string) (string, error) {
 	return nodes[0].Name, nil
 }
 
-// podsPerNode counts the live pods currently scheduled to each
-// candidate node. Excluded: pods in Succeeded / Failed phases (they
-// no longer consume capacity).
-//
-// Each lookup is O(pods-on-that-node) via the ByNodeIndex informer
-// index, so the total cost is proportional to the pods on the
-// candidate nodes — not every pod in the cluster.
+// podsPerNode counts live pods (excludes Succeeded/Failed) on each candidate node.
 func (p *LeastUsedPicker) podsPerNode(nodes []*corev1.Node) (map[string]int, error) {
 	counts := make(map[string]int, len(nodes))
 	for _, n := range nodes {

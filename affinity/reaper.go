@@ -16,22 +16,12 @@ import (
 )
 
 const (
-	// DefaultReaperInterval is how often the reaper sweeps the
-	// affinity ConfigMaps for orphan reservations.
 	DefaultReaperInterval = 5 * time.Minute
-	// DefaultReaperGrace is how long an orphan reservation is kept
-	// before being released, to absorb brief windows where a pod is
-	// recreated under the same name without the webhook's mutate
-	// being involved.
+	// DefaultReaperGrace absorbs brief windows where a pod is recreated under the same name.
 	DefaultReaperGrace = 30 * time.Minute
 )
 
-// Reaper periodically scans every per-pool affinity ConfigMap and
-// releases reservations whose backing pod no longer exists.
-//
-// Pod liveness checks are served from a shared pod informer cache,
-// so a sweep across N reservations is N in-memory lookups instead
-// of N apiserver GETs.
+// Reaper releases orphan reservations whose backing pod no longer exists.
 type Reaper struct {
 	store     Store
 	client    kubernetes.Interface
@@ -40,10 +30,6 @@ type Reaper struct {
 	grace     time.Duration
 }
 
-// NewReaper constructs a Reaper. A non-positive interval or grace
-// is replaced with the package default. The pod lister must come
-// from a started, cache-synced informer; the client is only used
-// to list the per-pool affinity ConfigMaps.
 func NewReaper(store Store, client kubernetes.Interface, pods corelisters.PodLister, interval, grace time.Duration) *Reaper {
 	if interval <= 0 {
 		interval = DefaultReaperInterval
@@ -60,9 +46,7 @@ func NewReaper(store Store, client kubernetes.Interface, pods corelisters.PodLis
 	}
 }
 
-// Run drives the reap loop until ctx is canceled. The first sweep
-// happens immediately so a webhook restart doesn't have to wait
-// Interval before reclaiming stale slots.
+// Run sweeps immediately, then on each tick until ctx is canceled.
 func (r *Reaper) Run(ctx context.Context) {
 	logger := log.WithFunc("Reaper.Run")
 
@@ -85,8 +69,6 @@ func (r *Reaper) Run(ctx context.Context) {
 	}
 }
 
-// reapOnce performs a single sweep across every cocoon-affinity
-// ConfigMap and releases stale entries.
 func (r *Reaper) reapOnce(ctx context.Context) error {
 	logger := log.WithFunc("Reaper.reapOnce")
 	pools, err := r.discoverPools(ctx)
@@ -116,8 +98,6 @@ func (r *Reaper) reapOnce(ctx context.Context) error {
 	return nil
 }
 
-// discoverPools lists every per-pool ConfigMap in the cocoon system
-// namespace by label and returns the pool names.
 func (r *Reaper) discoverPools(ctx context.Context) ([]string, error) {
 	cms, err := r.client.CoreV1().ConfigMaps(systemNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: meta.LabelManagedBy + "=" + managedByValue,
@@ -134,9 +114,7 @@ func (r *Reaper) discoverPools(ctx context.Context) ([]string, error) {
 	return pools, nil
 }
 
-// shouldRelease decides whether a reservation is stale enough to drop.
-// Conditions: the pod no longer exists in its namespace, AND the
-// reservation is older than the grace window.
+// shouldRelease: pod must be gone AND reservation must be older than grace.
 func (r *Reaper) shouldRelease(entry Reservation, now time.Time) bool {
 	if entry.Pod == "" {
 		return false

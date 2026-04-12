@@ -1,13 +1,3 @@
-// cocoon-webhook is the cocoonstack admission webhook. It will host:
-//
-//   - a mutating endpoint that pins managed pods to a stable VM name
-//     and a sticky cocoon node;
-//   - validating endpoints that block destructive scale-down on cocoon
-//     workloads and reject malformed CocoonSet specs.
-//
-// This file is the binary entry point. The handlers themselves live
-// in the admission package; affinity bookkeeping in the affinity
-// package; prometheus collectors in the metrics package.
 package main
 
 import (
@@ -40,11 +30,7 @@ const (
 	defaultListen        = ":8443"
 	defaultMetricsListen = ":9090"
 
-	// informerResync is set to 0 because neither the picker nor the
-	// reaper register UpdateFunc handlers — they only read the
-	// lister. The watch stream is authoritative, and a periodic
-	// resync would re-emit every cached object on every tick for no
-	// downstream benefit.
+	// No UpdateFunc handlers registered, so periodic resync adds no value.
 	informerResync = 0
 )
 
@@ -75,13 +61,8 @@ func main() {
 		logger.Fatalf(ctx, err, "build clientset: %v", err)
 	}
 
-	// Shared informer factory: pod and node informers feed both the
-	// admission hot path (LeastUsedPicker) and the background reaper.
 	informerFactory := informers.NewSharedInformerFactory(clientset, informerResync)
 
-	// Register the byNode index before starting the factory so the
-	// picker can look up pods by spec.nodeName in O(pods-on-node)
-	// instead of scanning every pod in the cluster.
 	podInformer := informerFactory.Core().V1().Pods().Informer()
 	if err := podInformer.AddIndexers(cache.Indexers{
 		affinity.ByNodeIndex: affinity.NodeNameIndexFunc,
@@ -110,10 +91,6 @@ func main() {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// Start the informers and block until their caches are warm.
-	// Serving admission requests before sync would mean the picker
-	// sees an empty pod set and concentrates every fresh pod onto
-	// whichever node sorts first alphabetically.
 	informerFactory.Start(ctx.Done())
 	var unsynced []string
 	for typ, ok := range informerFactory.WaitForCacheSync(ctx.Done()) {
@@ -152,11 +129,7 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	// Shutdown gets a fresh ctx because the parent ctx is already
-	// canceled by the signal handler. The 15s budget bounds how long
-	// in-flight admission requests get to drain before the process
-	// exits — long enough for healthy handlers, short enough that a
-	// stuck connection cannot wedge the pod indefinitely.
+	// Fresh ctx; parent is already canceled.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {

@@ -9,26 +9,15 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/affinity"
 )
 
-// Server hosts the admission webhook HTTP handlers. Dependencies are
-// injected so each handler stays trivially testable.
 type Server struct {
 	store  affinity.Store
 	client kubernetes.Interface
 }
 
-// NewServer constructs a Server with the supplied dependencies. The
-// kubernetes client is used by the workload validator to fetch the
-// parent Deployment / StatefulSet on /scale subresource UPDATEs,
-// where the AdmissionRequest carries an autoscaling/v1.Scale object
-// instead of the parent's pod template.
 func NewServer(store affinity.Store, client kubernetes.Interface) *Server {
 	return &Server{store: store, client: client}
 }
 
-// Routes returns the HTTP handler exposing every webhook endpoint.
-// Decode / dispatch / encode for the admission endpoints lives in
-// cocoon-common/k8s/admission; the per-endpoint handlers live in
-// this package.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mutate", s.handleMutate)

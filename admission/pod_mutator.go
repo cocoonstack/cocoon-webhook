@@ -14,11 +14,6 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-// mutatePod is the admission entry point for Pod CREATE. It writes
-// the canonical VM name annotation and pins the pod to a sticky
-// cocoon node via spec.nodeName. Pods that are not cocoon-tolerated,
-// are CocoonSet-owned, or already have spec.nodeName set are passed
-// through unchanged.
 func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("mutatePod")
 	req := review.Request
@@ -41,7 +36,6 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	}
 
 	if meta.IsOwnedByCocoonSet(pod.OwnerReferences) {
-		// CocoonSet-managed pods come pre-annotated by the operator.
 		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAllow)
 		return commonadmission.Allow()
 	}
@@ -60,8 +54,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 		PodName:    name,
 	})
 	if err != nil {
-		// Preserve cluster availability if the affinity store is
-		// unreachable: log loudly and let the pod through unmutated.
+		// Fail-open.
 		logger.Errorf(ctx, err, "reserve affinity for pod %s/%s", req.Namespace, name)
 		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAffinityFailed)
 		return commonadmission.Allow()
@@ -86,10 +79,6 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	}
 }
 
-// podDisplayName returns the most useful identifier for log lines.
-// Pods created via a controller may have an empty Name on the
-// admission request (the API server fills it in after admission); in
-// that case fall back to GenerateName + req.Name.
 func podDisplayName(pod *corev1.Pod, req *admissionv1.AdmissionRequest) string {
 	if pod.Name != "" {
 		return pod.Name
@@ -100,8 +89,6 @@ func podDisplayName(pod *corev1.Pod, req *admissionv1.AdmissionRequest) string {
 	return pod.GenerateName + "<unnamed>"
 }
 
-// buildMutatePatch produces an RFC 6902 JSON patch that writes the
-// VM name annotation and (when present) pins spec.nodeName.
 func buildMutatePatch(pod *corev1.Pod, res affinity.Reservation) ([]byte, error) {
 	var ops []commonadmission.JSONPatchOp
 	if pod.Annotations == nil {

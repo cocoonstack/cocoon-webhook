@@ -137,8 +137,6 @@ func TestConfigMapStoreReserveReusesExistingNode(t *testing.T) {
 		t.Fatalf("reserve 1: %v", err)
 	}
 
-	// Even if the picker would now return a different node, the store
-	// should re-use first.Node because slot 0 already has a pin.
 	store.picker = fixedNodePicker("never-picked")
 	second, err := store.Reserve(t.Context(), ReserveRequest{
 		Pool: "default", Namespace: "ns", Deployment: "demo", PodName: "demo-0",
@@ -189,7 +187,6 @@ func TestConfigMapStoreList(t *testing.T) {
 	if len(entries) != 3 {
 		t.Errorf("expected 3 entries, got %d", len(entries))
 	}
-	// List sorts by namespace, deployment, slot — verify slots are 0, 1, 2 in order.
 	for i, e := range entries {
 		if e.Slot != i {
 			t.Errorf("entry %d slot = %d, want %d", i, e.Slot, i)
@@ -237,14 +234,12 @@ func TestReservationKey(t *testing.T) {
 	}
 }
 
-// fixedNodePicker is a NodePicker that always returns the same node.
 type fixedNodePicker string
 
 func (n fixedNodePicker) Pick(_ context.Context, _ string) (string, error) {
 	return string(n), nil
 }
 
-// Sanity check that the fake client behaves the way the test pattern assumes.
 func TestFakeClientsetSanity(t *testing.T) {
 	client := fake.NewSimpleClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: systemNamespace}})
 	_, err := client.CoreV1().Namespaces().Get(t.Context(), systemNamespace, metav1.GetOptions{})

@@ -19,31 +19,12 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-// scalable is the small subset of appsv1.Deployment / appsv1.StatefulSet
-// that the workload validator needs: replica count + the pod
-// template's tolerations. The generic helper below uses it as the
-// type constraint so the two scale-down code paths share one
-// implementation.
 type scalable interface {
 	appsv1.Deployment | appsv1.StatefulSet
 }
 
-// validateWorkload is the admission entry point for Deployment and
-// StatefulSet UPDATE. It rejects scale-down on cocoon workloads
-// because the agents are stateful VMs — reducing replicas would
-// destroy state. Operators should use a CocoonHibernation CR to
-// suspend an individual agent instead.
-//
-// Two request shapes reach this handler:
-//
-//   - Direct PUT/PATCH on the parent: req.Kind = Deployment/StatefulSet,
-//     req.SubResource = "". The request body carries the full object,
-//     including the pod template tolerations we use to filter cocoon
-//     workloads.
-//   - kubectl scale: req.Resource = deployments/statefulsets,
-//     req.SubResource = "scale", req.Kind = autoscaling/v1 Scale. The
-//     request body is just a Scale, so we have to fetch the parent
-//     out of band to read its tolerations.
+// validateWorkload rejects scale-down on cocoon workloads (stateful VMs).
+// Handles both direct UPDATE and /scale subresource requests.
 func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	req := review.Request
 	if req.Operation != admissionv1.Update {
@@ -62,16 +43,8 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 	}
 }
 
-// validateScaleSubresource handles UPDATEs to deployments/scale and
-// statefulsets/scale. The Scale object only carries spec.replicas, so
-// we look up the parent workload from the apiserver to read its
-// tolerations and decide whether the cocoon scale-down rule applies.
-//
-// Failure modes are deliberately permissive (Allow + warning log)
-// rather than Fail-closed: an unreachable apiserver would otherwise
-// take down `kubectl scale` for every workload in the cluster, not
-// just cocoon ones. The mutating-webhook side is the only place that
-// has to be strict.
+// validateScaleSubresource fetches the parent workload to check tolerations.
+// Fails open if the apiserver is unreachable.
 func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateScaleSubresource")
 
@@ -87,9 +60,6 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 
 	tolerations, ok := s.fetchParentTolerations(ctx, req)
 	if !ok {
-		// Fetch failed; we already logged the underlying cause. Allow
-		// the request rather than wedging cluster scaling on a
-		// transient apiserver hiccup.
 		return commonadmission.Allow()
 	}
 	if !meta.HasCocoonToleration(tolerations) {
@@ -98,11 +68,6 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 	return checkScaleDown(ctx, req, oldScale.Spec.Replicas, newScale.Spec.Replicas)
 }
 
-// fetchParentTolerations resolves req.Resource to the parent
-// Deployment / StatefulSet and returns its pod-template tolerations.
-// Returns ok=false if the resource is not one we know about or the
-// API call failed for any reason other than NotFound (NotFound also
-// returns false: nothing to enforce against a missing parent).
 func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.AdmissionRequest) ([]corev1.Toleration, bool) {
 	logger := log.WithFunc("fetchParentTolerations")
 	switch req.Resource.Resource {
@@ -129,8 +94,6 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 	}
 }
 
-// validateScaleDown decodes the old and new objects, applies the
-// cocoon-toleration filter, and runs checkScaleDown.
 func validateScaleDown[T scalable](ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateScaleDown")
 	var oldObj, newObj T
@@ -149,9 +112,7 @@ func validateScaleDown[T scalable](ctx context.Context, req *admissionv1.Admissi
 	return checkScaleDown(ctx, req, workloadReplicas(&oldObj), workloadReplicas(&newObj))
 }
 
-// workloadReplicas extracts the replica count from either Deployment
-// or StatefulSet via a type switch on the generic argument. The
-// apps controllers default a nil pointer to 1, so we do too.
+// Nil pointer defaults to 1, matching apps controller behavior.
 func workloadReplicas[T scalable](obj *T) int32 {
 	switch v := any(obj).(type) {
 	case *appsv1.Deployment:
@@ -163,8 +124,6 @@ func workloadReplicas[T scalable](obj *T) int32 {
 	}
 }
 
-// workloadTolerations returns the pod-template tolerations of the
-// workload — used to filter out non-cocoon workloads early.
 func workloadTolerations[T scalable](obj *T) []corev1.Toleration {
 	switch v := any(obj).(type) {
 	case *appsv1.Deployment:

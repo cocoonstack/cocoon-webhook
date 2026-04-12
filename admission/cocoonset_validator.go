@@ -15,10 +15,7 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-// validateCocoonSet is the admission entry point for CocoonSet
-// CREATE / UPDATE. The CRD's OpenAPI schema covers most field-level
-// constraints; this hook adds the cross-field business rules the
-// schema cannot express on its own.
+// validateCocoonSet enforces cross-field business rules that the CRD OpenAPI schema cannot express.
 func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateCocoonSet")
 	req := review.Request
@@ -43,15 +40,6 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 	return commonadmission.Allow()
 }
 
-// validateCocoonSetSpec returns the list of human-readable error
-// messages for any cross-field rule violations. An empty slice means
-// the spec passes business validation.
-//
-// Enum membership is delegated to the IsValid() methods on the
-// cocoon-common enum types so the operator and the webhook share
-// one source of truth. The RFC 1123 label check uses
-// k8s.io/apimachinery/pkg/util/validation so future kube
-// validation tweaks land here for free.
 func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	var errs []string
 

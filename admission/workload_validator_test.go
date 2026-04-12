@@ -123,8 +123,6 @@ func TestServerValidateWorkloadScaleSubresourceNonCocoonAllowed(t *testing.T) {
 }
 
 func TestServerValidateWorkloadScaleSubresourceParentMissingAllowed(t *testing.T) {
-	// fail-open: an unreachable / missing parent should not block
-	// scale on every other workload in the cluster.
 	srv := newServerWithObjects(t)
 	review := buildScaleReview(t, "deployments", 5, 2)
 	resp := srv.validateWorkload(t.Context(), review)
@@ -133,9 +131,6 @@ func TestServerValidateWorkloadScaleSubresourceParentMissingAllowed(t *testing.T
 	}
 }
 
-// newServerWithObjects builds an admission Server backed by a fake
-// kubernetes client pre-loaded with the supplied objects, so the
-// scale-subresource validator can fetch the parent workload.
 func newServerWithObjects(t *testing.T, objs ...runtime.Object) *Server {
 	t.Helper()
 	client := fake.NewSimpleClientset(objs...)

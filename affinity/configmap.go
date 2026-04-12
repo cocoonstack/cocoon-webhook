@@ -21,17 +21,13 @@ import (
 
 var _ Store = (*ConfigMapStore)(nil)
 
-// ConfigMapStore is a Store backed by one ConfigMap per cocoon node
-// pool. Each entry is keyed by "<namespace>/<deployment>/<slot>" and
-// the value is a JSON-encoded Reservation. RetryOnConflict guards
-// concurrent webhook replicas racing on the same ConfigMap.
+// ConfigMapStore is a Store backed by one ConfigMap per node pool.
+// RetryOnConflict guards concurrent webhook replicas.
 type ConfigMapStore struct {
 	client kubernetes.Interface
 	picker NodePicker
 }
 
-// NewConfigMapStore returns a ConfigMapStore using nilNodePicker as
-// the default NodePicker if none is supplied.
 func NewConfigMapStore(client kubernetes.Interface, picker NodePicker) *ConfigMapStore {
 	if picker == nil {
 		picker = nilNodePicker{}
@@ -39,9 +35,6 @@ func NewConfigMapStore(client kubernetes.Interface, picker NodePicker) *ConfigMa
 	return &ConfigMapStore{client: client, picker: picker}
 }
 
-// Reserve allocates (or reuses) a slot for the requested pod and
-// pins it to a cocoon node. Bare pods (req.Deployment == "") get a
-// degenerate "slot 0" reservation keyed by pod name only.
 func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reservation, error) {
 	if req.Pool == "" {
 		return Reservation{}, fmt.Errorf("pool is required")
@@ -62,11 +55,7 @@ func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reser
 
 		entries := decodeReservations(cm)
 
-		// Fast path: a prior reservation for this exact pod with a
-		// pinned node is byte-identical to anything we would write.
-		// Skip the Update round trip and return the cached entry.
-		// Refreshing UpdatedAt is not needed — the reaper gates on
-		// pod-existence, not reservation age.
+		// Fast path: skip Update if nothing would change.
 		if existing, ok := findExistingReservation(entries, req.Namespace, req.Deployment, req.PodName); ok && existing.Node != "" {
 			result = existing
 			return nil
@@ -81,8 +70,6 @@ func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reser
 			vmName = meta.VMNameForPod(req.Namespace, req.PodName)
 		}
 
-		// Reuse the existing node if a previous reservation pinned this
-		// (deployment, slot) to one. Otherwise consult the picker.
 		node := lookupExistingNode(entries, req.Namespace, req.Deployment, slot)
 		if node == "" {
 			node, err = s.picker.Pick(ctx, req.Pool)
@@ -118,8 +105,6 @@ func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reser
 	return result, nil
 }
 
-// Release deletes a single reservation entry. Missing entries return
-// nil so callers can release optimistically.
 func (s *ConfigMapStore) Release(ctx context.Context, pool, namespace, deployment string, slot int) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cm, _, err := s.fetchOrInitConfigMap(ctx, pool)
@@ -135,7 +120,6 @@ func (s *ConfigMapStore) Release(ctx context.Context, pool, namespace, deploymen
 	})
 }
 
-// List returns every reservation currently stored for the pool.
 func (s *ConfigMapStore) List(ctx context.Context, pool string) ([]Reservation, error) {
 	cm, err := s.client.CoreV1().ConfigMaps(systemNamespace).Get(ctx, configMapName(pool), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
@@ -186,30 +170,20 @@ func (s *ConfigMapStore) persist(ctx context.Context, cm *corev1.ConfigMap, isNe
 	if isNew {
 		if _, err := cms.Create(ctx, cm, metav1.CreateOptions{}); err != nil {
 			if apierrors.IsAlreadyExists(err) {
-				// Convert to a Conflict so retry.RetryOnConflict
-				// loops back through fetchOrInitConfigMap on the
-				// next attempt.
+				// Convert to Conflict so RetryOnConflict re-fetches.
 				return apierrors.NewConflict(schema.GroupResource{Resource: "configmaps"}, cm.Name, err)
 			}
 			return fmt.Errorf("create configmap %s: %w", cm.Name, err)
 		}
 		return nil
 	}
-	// retry.RetryOnConflict matches via apierrors.IsConflict even
-	// when the error is wrapped, so a single fmt.Errorf preserves
-	// both the message and the retry signal.
 	if _, err := cms.Update(ctx, cm, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("update configmap %s: %w", cm.Name, err)
 	}
 	return nil
 }
 
-// reservationKey is the per-entry key used inside the ConfigMap data
-// map. Bare pods substitute "_pod" for the deployment segment. The
-// segments are joined with "." (not "/") because ConfigMap data keys
-// must match `[-._a-zA-Z0-9]+` and `/` is rejected by the apiserver.
-// Namespaces and workload names are RFC 1123 labels and cannot
-// contain ".", so the separator is unambiguous.
+// reservationKey uses "." as separator (not "/") because ConfigMap keys reject "/".
 func reservationKey(namespace, deployment string, slot int) string {
 	if deployment == "" {
 		return namespace + "._pod." + strconv.Itoa(slot)
@@ -217,9 +191,6 @@ func reservationKey(namespace, deployment string, slot int) string {
 	return namespace + "." + deployment + "." + strconv.Itoa(slot)
 }
 
-// decodeReservations parses every entry of a ConfigMap into a slice
-// of Reservation values, ignoring malformed rows. Callers should
-// treat the result as a snapshot for the duration of one Reserve.
 func decodeReservations(cm *corev1.ConfigMap) []Reservation {
 	if cm == nil || len(cm.Data) == 0 {
 		return nil
@@ -235,15 +206,8 @@ func decodeReservations(cm *corev1.ConfigMap) []Reservation {
 	return out
 }
 
-// allocateSlot picks a slot index for the requesting pod. The
-// algorithm:
-//
-//  1. If a reservation already exists for (namespace, deployment, podName), reuse its slot.
-//  2. Otherwise fill the smallest unused slot in the contiguous range [0, maxSlot+1).
-//  3. Otherwise return maxSlot+1 (append a new slot).
-//
-// Bare pods (deployment == "") always get slot 0; their reservation
-// key includes the pod name so they never collide with each other.
+// allocateSlot: reuse existing pod's slot, fill smallest gap, or append.
+// Bare pods always get slot 0.
 func allocateSlot(entries []Reservation, namespace, deployment, podName string) int {
 	if deployment == "" {
 		return 0
@@ -272,10 +236,6 @@ func allocateSlot(entries []Reservation, namespace, deployment, podName string) 
 	return maxSlot + 1
 }
 
-// lookupExistingNode returns the node a previous reservation pinned
-// to (namespace, deployment, slot), or "" if none exists. The webhook
-// always reuses the previous node so the same VM lands on the same
-// host across pod recreations.
 func lookupExistingNode(entries []Reservation, namespace, deployment string, slot int) string {
 	for _, e := range entries {
 		if e.Namespace == namespace && e.Deployment == deployment && e.Slot == slot {
@@ -285,10 +245,6 @@ func lookupExistingNode(entries []Reservation, namespace, deployment string, slo
 	return ""
 }
 
-// findExistingReservation returns the reservation previously written
-// for (namespace, deployment, podName), if one exists. Used by the
-// Reserve fast path to short-circuit a re-admission of the same pod
-// without issuing an apiserver Update.
 func findExistingReservation(entries []Reservation, namespace, deployment, podName string) (Reservation, bool) {
 	for _, e := range entries {
 		if e.Namespace == namespace && e.Deployment == deployment && e.Pod == podName {

@@ -184,10 +184,6 @@ func TestMutatePodPatchesCocoonPod(t *testing.T) {
 	}
 }
 
-// fixedNodePicker is a NodePicker test helper local to the admission
-// package. The affinity package has its own copy under _test.go that
-// cannot be imported across packages, so we duplicate the trivial
-// four-line type rather than expose a test helper from production.
 type fixedNodePicker string
 
 func (n fixedNodePicker) Pick(_ context.Context, _ string) (string, error) {
