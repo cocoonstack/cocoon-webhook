@@ -123,16 +123,10 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 		if opts.OS.Default() == cocoonv1.OSWindows {
 			errs = append(errs, fmt.Sprintf("%s: firecracker does not support Windows guests", path))
 		}
-		if isCloudImgURL(image) {
+		if strings.HasPrefix(image, "http://") || strings.HasPrefix(image, "https://") {
 			errs = append(errs, fmt.Sprintf("%s: firecracker requires an OCI image, cloudimg URLs are not supported (got %q)", path, image))
 		}
 	}
 
 	return errs
-}
-
-// isCloudImgURL reports whether image is a cloudimg URL (http/https) that
-// cocoon would dispatch through the cloudimg pipeline instead of OCI.
-func isCloudImgURL(image string) bool {
-	return strings.HasPrefix(image, "http://") || strings.HasPrefix(image, "https://")
 }
