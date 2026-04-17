@@ -23,9 +23,15 @@ The CRD ships with `+kubebuilder` enum / required / default markers, but the web
 - `spec.agent.replicas >= 0`
 - `spec.agent.mode ∈ {clone, run}`
 - `spec.agent.os ∈ {linux, windows, android}`
+- `spec.agent.backend ∈ {cloud-hypervisor, firecracker}`
+- `spec.agent.connType ∈ {ssh, rdp, vnc, adb}`
+- firecracker + `os=windows` is rejected (FC cannot boot Windows guests)
+- firecracker + cloudimg URL image is rejected (FC requires OCI images)
+- firecracker + `mode=clone` is rejected (FC snapshot/restore freezes guest network state; use `mode=run`)
 - `spec.toolboxes[*].name` unique and matches RFC 1123
 - `spec.toolboxes[*]` static mode requires both `staticIP` and `staticVMID`
 - `spec.toolboxes[*]` non-static modes require `image`
+- `spec.toolboxes[*].backend` must match `spec.agent.backend` (static toolboxes skip this check)
 - `spec.snapshotPolicy ∈ {always, main-only, never}`
 
 ## Configuration

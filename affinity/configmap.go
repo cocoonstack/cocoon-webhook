@@ -48,7 +48,7 @@ func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reser
 	}
 
 	var result Reservation
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	return result, retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cm, created, err := s.fetchOrInitConfigMap(ctx, req.Pool)
 		if err != nil {
 			return err
@@ -100,10 +100,6 @@ func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reser
 
 		return s.persist(ctx, cm, created)
 	})
-	if err != nil {
-		return Reservation{}, err
-	}
-	return result, nil
 }
 
 func (s *ConfigMapStore) Release(ctx context.Context, pool, namespace, deployment string, slot int) error {
