@@ -130,6 +130,15 @@ func TestServerValidateWorkloadScaleSubresourceParentMissingAllowed(t *testing.T
 	}
 }
 
+func TestValidateScaleDownBlocksWhenOldHasToleration(t *testing.T) {
+	old := newDeployment(5, true)
+	updated := newDeployment(2, false) // toleration removed in same patch
+	resp := validateScaleDown[appsv1.Deployment](t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	if resp.Allowed {
+		t.Errorf("scale-down should be blocked when old object has cocoon toleration")
+	}
+}
+
 func newServerWithObjects(t *testing.T, objs ...runtime.Object) *Server {
 	t.Helper()
 	client := fake.NewSimpleClientset(objs...)

@@ -106,7 +106,7 @@ func validateScaleDown[T scalable](ctx context.Context, req *admissionv1.Admissi
 		return commonadmission.Allow()
 	}
 
-	if !meta.HasCocoonToleration(workloadTolerations(&newObj)) {
+	if !meta.HasCocoonToleration(workloadTolerations(&oldObj)) {
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, workloadReplicas(&oldObj), workloadReplicas(&newObj))

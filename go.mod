@@ -3,7 +3,7 @@ module github.com/cocoonstack/cocoon-webhook
 go 1.25.0
 
 require (
-	github.com/cocoonstack/cocoon-common v0.1.8-0.20260418171148-1a5832fd83f6
+	github.com/cocoonstack/cocoon-common v0.1.8-0.20260418181204-482d3745b26f
 	github.com/projecteru2/core v0.0.0-20241016125006-ff909eefe04c
 	github.com/prometheus/client_golang v1.23.2
 	k8s.io/api v0.35.3
