@@ -8,10 +8,12 @@ import (
 	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
 )
 
+// Server is the admission webhook HTTP server that handles mutate and validate requests.
 type Server struct {
 	client kubernetes.Interface
 }
 
+// NewServer creates an admission Server with the given Kubernetes client.
 func NewServer(client kubernetes.Interface) *Server {
 	return &Server{client: client}
 }

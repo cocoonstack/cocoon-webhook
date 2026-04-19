@@ -38,13 +38,13 @@ func NewConfigMapStore(client kubernetes.Interface, picker NodePicker) *ConfigMa
 
 func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reservation, error) {
 	if req.Pool == "" {
-		return Reservation{}, fmt.Errorf("pool is required")
+		return Reservation{}, fmt.Errorf("validate reserve: pool is required")
 	}
 	if req.Namespace == "" {
-		return Reservation{}, fmt.Errorf("namespace is required")
+		return Reservation{}, fmt.Errorf("validate reserve: namespace is required")
 	}
 	if req.PodName == "" {
-		return Reservation{}, fmt.Errorf("pod name is required")
+		return Reservation{}, fmt.Errorf("validate reserve: pod name is required")
 	}
 
 	var result Reservation

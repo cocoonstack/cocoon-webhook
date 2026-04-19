@@ -56,7 +56,7 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 }
 
 func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
-	var errs []string
+	errs := make([]string, 0, 16)
 
 	if cs.Spec.Agent.Image == "" {
 		errs = append(errs, "spec.agent.image is required")

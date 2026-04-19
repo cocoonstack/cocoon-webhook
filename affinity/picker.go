@@ -51,7 +51,7 @@ func NewLeastUsedPicker(pods PodIndexer, nodes corelisters.NodeLister) *LeastUse
 // Pick returns "" when the pool has no nodes (let the scheduler decide).
 func (p *LeastUsedPicker) Pick(_ context.Context, pool string) (string, error) {
 	if pool == "" {
-		return "", fmt.Errorf("pool must not be empty")
+		return "", fmt.Errorf("pick node: pool must not be empty")
 	}
 
 	poolSelector := labels.SelectorFromSet(labels.Set{meta.LabelNodePool: pool})
