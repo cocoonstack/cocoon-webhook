@@ -18,6 +18,7 @@ func NewServer(client kubernetes.Interface) *Server {
 	return &Server{client: client}
 }
 
+// Routes returns the HTTP handler with all admission webhook routes registered.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mutate", s.handleMutate)

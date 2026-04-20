@@ -3,7 +3,7 @@ module github.com/cocoonstack/cocoon-webhook
 go 1.25.0
 
 require (
-	github.com/cocoonstack/cocoon-common v0.1.8
+	github.com/cocoonstack/cocoon-common v0.1.9
 	github.com/projecteru2/core v0.0.0-20241016125006-ff909eefe04c
 	github.com/prometheus/client_golang v1.23.2
 	k8s.io/api v0.35.3
@@ -34,6 +34,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
