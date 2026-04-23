@@ -36,6 +36,9 @@ func NewConfigMapStore(client kubernetes.Interface, picker NodePicker) *ConfigMa
 	return &ConfigMapStore{client: client, picker: picker}
 }
 
+// Reserve allocates (or reuses) a slot for the given pod within its pool and
+// returns the resulting Reservation. Retries on conflict so concurrent webhook
+// replicas converge on the same ConfigMap revision.
 func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reservation, error) {
 	if req.Pool == "" {
 		return Reservation{}, fmt.Errorf("validate reserve: pool is required")
@@ -102,6 +105,8 @@ func (s *ConfigMapStore) Reserve(ctx context.Context, req ReserveRequest) (Reser
 	})
 }
 
+// Release removes the reservation for (pool, namespace, deployment, slot).
+// Missing keys are treated as success so the call is idempotent.
 func (s *ConfigMapStore) Release(ctx context.Context, pool, namespace, deployment string, slot int) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cm, _, err := s.fetchOrInitConfigMap(ctx, pool)
@@ -117,6 +122,8 @@ func (s *ConfigMapStore) Release(ctx context.Context, pool, namespace, deploymen
 	})
 }
 
+// List returns all reservations in the given pool, sorted by namespace,
+// deployment, then slot. A missing ConfigMap yields a nil slice.
 func (s *ConfigMapStore) List(ctx context.Context, pool string) ([]Reservation, error) {
 	cm, err := s.client.CoreV1().ConfigMaps(systemNamespace).Get(ctx, configMapName(pool), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {

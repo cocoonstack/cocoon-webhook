@@ -19,10 +19,6 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-type scalable interface {
-	appsv1.Deployment | appsv1.StatefulSet
-}
-
 // validateWorkload rejects scale-down on cocoon workloads (stateful VMs).
 // Handles both direct UPDATE and /scale subresource requests.
 func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
@@ -35,16 +31,17 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 	}
 	switch req.Kind.Kind {
 	case "Deployment":
-		return validateScaleDown[appsv1.Deployment](ctx, req)
+		return validateDeploymentScaleDown(ctx, req)
 	case "StatefulSet":
-		return validateScaleDown[appsv1.StatefulSet](ctx, req)
+		return validateStatefulSetScaleDown(ctx, req)
 	default:
 		return commonadmission.Allow()
 	}
 }
 
 // validateScaleSubresource fetches the parent workload to check tolerations.
-// Fails closed if the apiserver is unreachable.
+// Fails closed on apiserver errors; fails open on malformed Scale payloads
+// (apiserver controls that shape).
 func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateScaleSubresource")
 
@@ -100,48 +97,58 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 	}
 }
 
-func validateScaleDown[T scalable](ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
-	logger := log.WithFunc("validateScaleDown")
-	var oldObj, newObj T
-	if err := json.Unmarshal(req.OldObject.Raw, &oldObj); err != nil {
+func validateDeploymentScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+	var oldObj, newObj appsv1.Deployment
+	if !decodeUpdatePair(ctx, "validateDeploymentScaleDown", req, &oldObj, &newObj) {
+		return commonadmission.Allow()
+	}
+	if !meta.HasCocoonToleration(oldObj.Spec.Template.Spec.Tolerations) {
+		return commonadmission.Allow()
+	}
+	return checkScaleDown(ctx, req, deploymentReplicas(&oldObj), deploymentReplicas(&newObj))
+}
+
+func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+	var oldObj, newObj appsv1.StatefulSet
+	if !decodeUpdatePair(ctx, "validateStatefulSetScaleDown", req, &oldObj, &newObj) {
+		return commonadmission.Allow()
+	}
+	if !meta.HasCocoonToleration(oldObj.Spec.Template.Spec.Tolerations) {
+		return commonadmission.Allow()
+	}
+	return checkScaleDown(ctx, req, statefulSetReplicas(&oldObj), statefulSetReplicas(&newObj))
+}
+
+// decodeUpdatePair decodes req.OldObject and req.Object into the provided
+// pointers. Returns false and logs a warning on malformed payloads so callers
+// can fail open.
+func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
+	logger := log.WithFunc(fn)
+	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {
 		logger.Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
-		return commonadmission.Allow()
+		return false
 	}
-	if err := json.Unmarshal(req.Object.Raw, &newObj); err != nil {
+	if err := json.Unmarshal(req.Object.Raw, newObj); err != nil {
 		logger.Warnf(ctx, "decode new %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
-		return commonadmission.Allow()
+		return false
 	}
-
-	if !meta.HasCocoonToleration(workloadTolerations(&oldObj)) {
-		return commonadmission.Allow()
-	}
-	return checkScaleDown(ctx, req, workloadReplicas(&oldObj), workloadReplicas(&newObj))
+	return true
 }
 
-// Nil pointer defaults to 1, matching apps controller behavior.
-func workloadReplicas[T scalable](obj *T) int32 {
-	switch v := any(obj).(type) {
-	case *appsv1.Deployment:
-		return ptr.Deref(v.Spec.Replicas, 1)
-	case *appsv1.StatefulSet:
-		return ptr.Deref(v.Spec.Replicas, 1)
-	default:
-		return 0
-	}
+// deploymentReplicas returns the desired replica count, defaulting to 1 when
+// the pointer is nil (matches the apps controller behavior).
+func deploymentReplicas(d *appsv1.Deployment) int32 {
+	return ptr.Deref(d.Spec.Replicas, 1)
 }
 
-func workloadTolerations[T scalable](obj *T) []corev1.Toleration {
-	switch v := any(obj).(type) {
-	case *appsv1.Deployment:
-		return v.Spec.Template.Spec.Tolerations
-	case *appsv1.StatefulSet:
-		return v.Spec.Template.Spec.Tolerations
-	default:
-		return nil
-	}
+// statefulSetReplicas returns the desired replica count, defaulting to 1 when
+// the pointer is nil (matches the apps controller behavior).
+func statefulSetReplicas(s *appsv1.StatefulSet) int32 {
+	return ptr.Deref(s.Spec.Replicas, 1)
 }
 
 func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
+	logger := log.WithFunc("checkScaleDown")
 	if newReplicas >= oldReplicas {
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.DecisionAllow)
 		return commonadmission.Allow()
@@ -150,7 +157,7 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldR
 		"cocoon-webhook: scale-down blocked for cocoon %s %s/%s (%d -> %d). "+
 			"Use a CocoonHibernation CR to suspend individual agents.",
 		req.Kind.Kind, req.Namespace, req.Name, oldReplicas, newReplicas)
-	log.WithFunc("checkScaleDown").Warn(ctx, msg)
+	logger.Warn(ctx, msg)
 	metrics.RecordAdmission(metrics.HandlerValidate, metrics.DecisionDeny)
 	return commonadmission.Deny(msg)
 }

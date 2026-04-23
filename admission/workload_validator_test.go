@@ -53,7 +53,7 @@ func TestCheckScaleDownDeniesDecrement(t *testing.T) {
 func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 	old := newDeployment(5, true)
 	updated := newDeployment(2, true)
-	resp := validateScaleDown[appsv1.Deployment](t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateDeploymentScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon scale-down should be blocked")
 	}
@@ -62,7 +62,7 @@ func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 	old := newDeployment(5, false)
 	updated := newDeployment(2, false)
-	resp := validateScaleDown[appsv1.Deployment](t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateDeploymentScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if !resp.Allowed {
 		t.Errorf("non-cocoon deployment should pass through")
 	}
@@ -71,7 +71,7 @@ func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 func TestValidateStatefulSetScaleDownBlocked(t *testing.T) {
 	old := newStatefulSet(5, true)
 	updated := newStatefulSet(2, true)
-	resp := validateScaleDown[appsv1.StatefulSet](t.Context(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
+	resp := validateStatefulSetScaleDown(t.Context(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon statefulset scale-down should be blocked")
 	}
@@ -148,7 +148,7 @@ func TestServerValidateWorkloadScaleSubresourceAPIErrorDenied(t *testing.T) {
 func TestValidateScaleDownBlocksWhenOldHasToleration(t *testing.T) {
 	old := newDeployment(5, true)
 	updated := newDeployment(2, false) // toleration removed in same patch
-	resp := validateScaleDown[appsv1.Deployment](t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateDeploymentScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("scale-down should be blocked when old object has cocoon toleration")
 	}

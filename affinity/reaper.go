@@ -15,8 +15,8 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-// DefaultReaperInterval is the sweep interval between orphan-reservation checks.
 const (
+	// DefaultReaperInterval is the sweep interval between orphan-reservation checks.
 	DefaultReaperInterval = 5 * time.Minute
 	// DefaultReaperGrace absorbs brief windows where a pod is recreated under the same name.
 	DefaultReaperGrace = 30 * time.Minute

@@ -64,6 +64,9 @@ func main() {
 		},
 	}
 
+	// Capture root ctx before signal.NotifyContext shadows it; shutdown must
+	// outlive the signal-derived ctx (which is canceled the moment we handle SIGINT/SIGTERM).
+	rootCtx := ctx
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
@@ -78,6 +81,7 @@ func main() {
 		logger.Infof(ctx, "cocoon-webhook metrics listening on %s", metricsListen)
 		if serveErr := metricsServer.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			logger.Error(ctx, serveErr, "metrics listen and serve")
+			cancel()
 		}
 	}()
 
@@ -85,13 +89,13 @@ func main() {
 		logger.Infof(ctx, "cocoon-webhook %s started (rev=%s built=%s) on %s",
 			version.VERSION, version.REVISION, version.BUILTAT, listen)
 		if serveErr := server.ListenAndServeTLS("", ""); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			logger.Fatalf(ctx, serveErr, "listen and serve: %v", serveErr)
+			logger.Error(ctx, serveErr, "listen and serve")
+			cancel()
 		}
 	}()
 
 	<-ctx.Done()
-	// Fresh ctx; parent is already canceled.
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(rootCtx, 15*time.Second)
 	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Warnf(shutdownCtx, "shutdown admission: %v", err)

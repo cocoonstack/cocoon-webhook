@@ -8,19 +8,13 @@ import (
 )
 
 const (
-	metricNamespace = "cocoon"
-	metricSubsystem = "webhook"
-
-	labelHandler  = "handler"
-	labelDecision = "decision"
-	labelPool     = "pool"
-
 	// HandlerMutate is the label value for the mutating admission handler.
 	HandlerMutate = "mutate"
 	// HandlerValidate is the label value for the validating admission handler.
 	HandlerValidate = "validate"
 	// HandlerValidateCocoonSet is the label value for CocoonSet validation.
 	HandlerValidateCocoonSet = "validate_cocoonset"
+
 	// DecisionAllow is the label value for an allowed admission decision.
 	DecisionAllow = "allow"
 	// DecisionDeny is the label value for a denied admission decision.
@@ -29,6 +23,13 @@ const (
 	DecisionError = "error"
 	// DecisionAffinityFailed is the label value when affinity reservation fails.
 	DecisionAffinityFailed = "affinity_failed"
+
+	metricNamespace = "cocoon"
+	metricSubsystem = "webhook"
+
+	labelHandler  = "handler"
+	labelDecision = "decision"
+	labelPool     = "pool"
 )
 
 var (
