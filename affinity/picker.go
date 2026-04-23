@@ -13,10 +13,8 @@ import (
 	"github.com/cocoonstack/cocoon-common/meta"
 )
 
-const (
-	// ByNodeIndex is the cache indexer name for pod-by-node lookups.
-	ByNodeIndex = "byNode"
-)
+// ByNodeIndex is the cache indexer name for pod-by-node lookups.
+const ByNodeIndex = "byNode"
 
 var _ NodePicker = (*LeastUsedPicker)(nil)
 
