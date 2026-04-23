@@ -25,8 +25,11 @@ type Reservation struct {
 
 // Store persists slot-and-node assignments per cocoon node pool.
 type Store interface {
+	// Reserve allocates (or reuses) a slot for the request and returns the resulting Reservation.
 	Reserve(ctx context.Context, req ReserveRequest) (Reservation, error)
+	// Release removes the reservation identified by pool, namespace, deployment, and slot.
 	Release(ctx context.Context, pool, namespace, deployment string, slot int) error
+	// List returns all reservations currently held for the given pool.
 	List(ctx context.Context, pool string) ([]Reservation, error)
 }
 

@@ -21,8 +21,6 @@ const (
 	DecisionDeny = "deny"
 	// DecisionError is the label value for an errored admission decision.
 	DecisionError = "error"
-	// DecisionAffinityFailed is the label value when affinity reservation fails.
-	DecisionAffinityFailed = "affinity_failed"
 
 	metricNamespace = "cocoon"
 	metricSubsystem = "webhook"
