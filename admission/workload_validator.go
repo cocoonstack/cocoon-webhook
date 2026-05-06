@@ -156,7 +156,8 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldR
 	msg := fmt.Sprintf(
 		"cocoon-webhook: scale-down blocked for cocoon %s %s/%s (%d -> %d). "+
 			"Use a CocoonHibernation CR to suspend individual agents.",
-		req.Kind.Kind, req.Namespace, req.Name, oldReplicas, newReplicas)
+		req.Kind.Kind, req.Namespace, req.Name, oldReplicas, newReplicas,
+	)
 	logger.Warn(ctx, msg)
 	metrics.RecordAdmission(metrics.HandlerValidate, metrics.DecisionDeny)
 	return commonadmission.Deny(msg)

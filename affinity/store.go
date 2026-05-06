@@ -1,3 +1,5 @@
+// Package affinity reserves and releases cocoon node-affinity slots,
+// persisted as ConfigMaps so the assignment survives webhook restarts.
 package affinity
 
 import (

@@ -1,3 +1,5 @@
+// Package admission implements the cocoon-webhook mutate and validate
+// handlers (pods, workloads, and CocoonSet CRs).
 package admission
 
 import (

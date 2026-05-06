@@ -1,3 +1,4 @@
+// Package metrics exposes cocoon-webhook Prometheus counters.
 package metrics
 
 import (
