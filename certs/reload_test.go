@@ -1,7 +1,6 @@
 package certs
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -59,7 +58,7 @@ func TestReloaderInitialLoad(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
 
-	r, err := NewReloader(context.Background(), certPath, keyPath)
+	r, err := NewReloader(t.Context(), certPath, keyPath)
 	if err != nil {
 		t.Fatalf("NewReloader: %v", err)
 	}
@@ -77,7 +76,7 @@ func TestReloaderPicksUpRotation(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
 
-	r, err := NewReloader(context.Background(), certPath, keyPath)
+	r, err := NewReloader(t.Context(), certPath, keyPath)
 	if err != nil {
 		t.Fatalf("NewReloader: %v", err)
 	}
@@ -106,7 +105,7 @@ func TestReloaderServesStaleOnReloadFailure(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
 
-	r, err := NewReloader(context.Background(), certPath, keyPath)
+	r, err := NewReloader(t.Context(), certPath, keyPath)
 	if err != nil {
 		t.Fatalf("NewReloader: %v", err)
 	}
