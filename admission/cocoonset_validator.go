@@ -28,7 +28,7 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 
 	var cs cocoonv1.CocoonSet
 	if err := json.Unmarshal(req.Object.Raw, &cs); err != nil {
-		logger.Warnf(ctx, "decode cocoonset %s/%s: %v", req.Namespace, req.Name, err)
+		logger.Errorf(ctx, err, "decode cocoonset %s/%s", req.Namespace, req.Name)
 		return commonadmission.Deny(fmt.Sprintf("decode CocoonSet: %v", err))
 	}
 
@@ -39,7 +39,7 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 	if req.Operation == admissionv1.Update && req.OldObject.Raw != nil {
 		var old cocoonv1.CocoonSet
 		if err := json.Unmarshal(req.OldObject.Raw, &old); err != nil {
-			logger.Warnf(ctx, "decode old cocoonset %s/%s: %v", req.Namespace, req.Name, err)
+			logger.Errorf(ctx, err, "decode old cocoonset %s/%s", req.Namespace, req.Name)
 		} else if specEqual(&cs, &old) {
 			return commonadmission.Allow()
 		}

@@ -24,7 +24,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 
 	var pod corev1.Pod
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
-		logger.Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
+		logger.Errorf(ctx, err, "decode pod %s/%s", req.Namespace, req.Name)
 		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionError)
 		return commonadmission.Allow()
 	}

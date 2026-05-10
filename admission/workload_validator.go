@@ -47,17 +47,17 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 
 	var oldScale, newScale autoscalingv1.Scale
 	if err := json.Unmarshal(req.OldObject.Raw, &oldScale); err != nil {
-		logger.Warnf(ctx, "decode old Scale %s/%s: %v", req.Namespace, req.Name, err)
+		logger.Errorf(ctx, err, "decode old Scale %s/%s", req.Namespace, req.Name)
 		return commonadmission.Allow()
 	}
 	if err := json.Unmarshal(req.Object.Raw, &newScale); err != nil {
-		logger.Warnf(ctx, "decode new Scale %s/%s: %v", req.Namespace, req.Name, err)
+		logger.Errorf(ctx, err, "decode new Scale %s/%s", req.Namespace, req.Name)
 		return commonadmission.Allow()
 	}
 
 	tolerations, ok, err := s.fetchParentTolerations(ctx, req)
 	if err != nil {
-		logger.Warnf(ctx, "fetch parent tolerations %s/%s: %v", req.Namespace, req.Name, err)
+		logger.Errorf(ctx, err, "fetch parent tolerations %s/%s", req.Namespace, req.Name)
 		return commonadmission.Deny(fmt.Sprintf("cocoon-webhook: cannot verify parent workload: %v", err))
 	}
 	if !ok {
@@ -78,7 +78,7 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 			if apierrors.IsNotFound(err) {
 				return nil, false, nil
 			}
-			logger.Warnf(ctx, "get parent Deployment %s/%s: %v", req.Namespace, req.Name, err)
+			logger.Errorf(ctx, err, "get parent Deployment %s/%s", req.Namespace, req.Name)
 			return nil, false, fmt.Errorf("get parent deployment: %w", err)
 		}
 		return dep.Spec.Template.Spec.Tolerations, true, nil
@@ -88,7 +88,7 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 			if apierrors.IsNotFound(err) {
 				return nil, false, nil
 			}
-			logger.Warnf(ctx, "get parent StatefulSet %s/%s: %v", req.Namespace, req.Name, err)
+			logger.Errorf(ctx, err, "get parent StatefulSet %s/%s", req.Namespace, req.Name)
 			return nil, false, fmt.Errorf("get parent statefulset: %w", err)
 		}
 		return sts.Spec.Template.Spec.Tolerations, true, nil
@@ -125,11 +125,11 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
 	logger := log.WithFunc(fn)
 	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {
-		logger.Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
+		logger.Errorf(ctx, err, "decode old %s %s/%s", req.Kind.Kind, req.Namespace, req.Name)
 		return false
 	}
 	if err := json.Unmarshal(req.Object.Raw, newObj); err != nil {
-		logger.Warnf(ctx, "decode new %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
+		logger.Errorf(ctx, err, "decode new %s %s/%s", req.Kind.Kind, req.Namespace, req.Name)
 		return false
 	}
 	return true
