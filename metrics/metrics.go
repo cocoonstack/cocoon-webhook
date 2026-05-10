@@ -28,44 +28,21 @@ const (
 
 	labelHandler  = "handler"
 	labelDecision = "decision"
-	labelPool     = "pool"
 )
 
-var (
-	admissionTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: metricNamespace,
-			Subsystem: metricSubsystem,
-			Name:      "admission_total",
-			Help:      "Number of admission decisions, by handler and decision.",
-		},
-		[]string{labelHandler, labelDecision},
-	)
-
-	affinityReservations = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: metricNamespace,
-			Subsystem: metricSubsystem,
-			Name:      "affinity_reservations_total",
-			Help:      "Number of successful affinity reservations, by pool.",
-		},
-		[]string{labelPool},
-	)
-
-	affinityReleases = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: metricNamespace,
-			Subsystem: metricSubsystem,
-			Name:      "affinity_releases_total",
-			Help:      "Number of orphan reservations released by the reaper, by pool.",
-		},
-		[]string{labelPool},
-	)
+var admissionTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: metricNamespace,
+		Subsystem: metricSubsystem,
+		Name:      "admission_total",
+		Help:      "Number of admission decisions, by handler and decision.",
+	},
+	[]string{labelHandler, labelDecision},
 )
 
 // Register registers all webhook metrics with the given registerer.
 func Register(reg prometheus.Registerer) {
-	reg.MustRegister(admissionTotal, affinityReservations, affinityReleases)
+	reg.MustRegister(admissionTotal)
 }
 
 // Handler returns the Prometheus metrics HTTP handler.
@@ -76,16 +53,4 @@ func Handler() http.Handler {
 // RecordAdmission increments the admission counter for the given handler and decision.
 func RecordAdmission(handler, decision string) {
 	admissionTotal.WithLabelValues(handler, decision).Inc()
-}
-
-// RecordReservation increments the reservation counter for the given pool.
-// Registered and exposed via /metrics, but not yet incremented by any caller;
-// wiring for the affinity reservation path is TBD.
-func RecordReservation(pool string) {
-	affinityReservations.WithLabelValues(pool).Inc()
-}
-
-// RecordRelease increments the release counter for the given pool.
-func RecordRelease(pool string) {
-	affinityReleases.WithLabelValues(pool).Inc()
 }

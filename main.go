@@ -1,6 +1,5 @@
 // Package main is the cocoon-webhook entry point. The webhook handles
-// admission review for cocoon pods, workloads, and CocoonSet CRs, and
-// owns the per-pool node-affinity reservation store.
+// admission review for cocoon pods, workloads, and CocoonSet CRs.
 package main
 
 import (
