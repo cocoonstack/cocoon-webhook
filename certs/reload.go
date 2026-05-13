@@ -45,6 +45,13 @@ func NewReloader(ctx context.Context, certFile, keyFile string) (*Reloader, erro
 // files; if either mtime is newer than our cached load, re-reads. Stat
 // is cheap enough to do per-handshake — webhooks handle handshakes at
 // admission rate, not request rate.
+//
+// Under simultaneous handshakes multiple goroutines can pass mtimeChanged
+// before any of them completes load(), so the same file gets re-read
+// concurrently. We tolerate the thundering-herd window because every
+// concurrent reader produces identical cert content; the only cost is
+// redundant LoadX509KeyPair calls during a rotation. Worth it to keep
+// the read path lock-free under steady state.
 func (r *Reloader) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if r.mtimeChanged() {
 		if err := r.load(); err != nil {
