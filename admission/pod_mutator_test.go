@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
-	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
 	"github.com/cocoonstack/cocoon-common/meta"
 )
 
@@ -60,19 +59,6 @@ func TestPodNodePoolPrecedence(t *testing.T) {
 				t.Errorf("got %q, want %q", got, c.want)
 			}
 		})
-	}
-}
-
-func TestEscapeJSONPointer(t *testing.T) {
-	cases := map[string]string{
-		"vm.cocoonstack.io/name": "vm.cocoonstack.io~1name",
-		"a/b~c":                  "a~1b~0c",
-		"plain":                  "plain",
-	}
-	for in, want := range cases {
-		if got := commonadmission.EscapeJSONPointer(in); got != want {
-			t.Errorf("escape %q = %q, want %q", in, got, want)
-		}
 	}
 }
 

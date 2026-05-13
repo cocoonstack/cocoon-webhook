@@ -33,9 +33,10 @@ const (
 
 func main() {
 	ctx := context.Background()
-	commonlog.Setup(ctx, "WEBHOOK_LOG_LEVEL")
-
 	logger := log.WithFunc("main")
+	if err := commonlog.Setup(ctx, "WEBHOOK_LOG_LEVEL"); err != nil {
+		logger.Fatalf(ctx, err, "setup log: %v", err)
+	}
 
 	metrics.Register(prometheus.DefaultRegisterer)
 
@@ -46,12 +47,12 @@ func main() {
 
 	reloader, err := certs.NewReloader(ctx, certFile, keyFile)
 	if err != nil {
-		logger.Fatalf(ctx, err, "load TLS keypair")
+		logger.Fatalf(ctx, err, "load TLS keypair: %v", err)
 	}
 
 	clientset, err := commonk8s.NewClientset()
 	if err != nil {
-		logger.Fatalf(ctx, err, "build clientset")
+		logger.Fatalf(ctx, err, "build clientset: %v", err)
 	}
 
 	webhookServer := commonhttpx.NewServer(listen, admission.NewServer(clientset).Routes())

@@ -47,11 +47,11 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 
 	var oldScale, newScale autoscalingv1.Scale
 	if err := json.Unmarshal(req.OldObject.Raw, &oldScale); err != nil {
-		logger.Errorf(ctx, err, "decode old Scale %s/%s", req.Namespace, req.Name)
+		logger.Warnf(ctx, "decode old Scale %s/%s: %v", req.Namespace, req.Name, err)
 		return commonadmission.Allow()
 	}
 	if err := json.Unmarshal(req.Object.Raw, &newScale); err != nil {
-		logger.Errorf(ctx, err, "decode new Scale %s/%s", req.Namespace, req.Name)
+		logger.Warnf(ctx, "decode new Scale %s/%s: %v", req.Namespace, req.Name, err)
 		return commonadmission.Allow()
 	}
 
@@ -63,14 +63,13 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 	if !ok {
 		return commonadmission.Allow()
 	}
-	if !meta.HasCocoonToleration(tolerations) {
+	if !meta.HasCocoonTolerationKey(tolerations) {
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, oldScale.Spec.Replicas, newScale.Spec.Replicas)
 }
 
 func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.AdmissionRequest) ([]corev1.Toleration, bool, error) {
-	logger := log.WithFunc("fetchParentTolerations")
 	switch req.Resource.Resource {
 	case "deployments":
 		dep, err := s.client.AppsV1().Deployments(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
@@ -78,7 +77,6 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 			if apierrors.IsNotFound(err) {
 				return nil, false, nil
 			}
-			logger.Errorf(ctx, err, "get parent Deployment %s/%s", req.Namespace, req.Name)
 			return nil, false, fmt.Errorf("get parent deployment: %w", err)
 		}
 		return dep.Spec.Template.Spec.Tolerations, true, nil
@@ -88,7 +86,6 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 			if apierrors.IsNotFound(err) {
 				return nil, false, nil
 			}
-			logger.Errorf(ctx, err, "get parent StatefulSet %s/%s", req.Namespace, req.Name)
 			return nil, false, fmt.Errorf("get parent statefulset: %w", err)
 		}
 		return sts.Spec.Template.Spec.Tolerations, true, nil
@@ -102,7 +99,7 @@ func validateDeploymentScaleDown(ctx context.Context, req *admissionv1.Admission
 	if !decodeUpdatePair(ctx, "validateDeploymentScaleDown", req, &oldObj, &newObj) {
 		return commonadmission.Allow()
 	}
-	if !meta.HasCocoonToleration(oldObj.Spec.Template.Spec.Tolerations) {
+	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, deploymentReplicas(&oldObj), deploymentReplicas(&newObj))
@@ -113,7 +110,7 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 	if !decodeUpdatePair(ctx, "validateStatefulSetScaleDown", req, &oldObj, &newObj) {
 		return commonadmission.Allow()
 	}
-	if !meta.HasCocoonToleration(oldObj.Spec.Template.Spec.Tolerations) {
+	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, statefulSetReplicas(&oldObj), statefulSetReplicas(&newObj))
@@ -121,15 +118,16 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 
 // decodeUpdatePair decodes req.OldObject and req.Object into the provided
 // pointers. Returns false and logs a warning on malformed payloads so callers
-// can fail open.
+// can fail open — apiserver will reject the malformed request anyway, so this
+// is bad client input rather than a webhook failure.
 func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
 	logger := log.WithFunc(fn)
 	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {
-		logger.Errorf(ctx, err, "decode old %s %s/%s", req.Kind.Kind, req.Namespace, req.Name)
+		logger.Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
 		return false
 	}
 	if err := json.Unmarshal(req.Object.Raw, newObj); err != nil {
-		logger.Errorf(ctx, err, "decode new %s %s/%s", req.Kind.Kind, req.Namespace, req.Name)
+		logger.Warnf(ctx, "decode new %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
 		return false
 	}
 	return true

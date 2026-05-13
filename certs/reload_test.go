@@ -49,11 +49,6 @@ func writeKeypair(t *testing.T, dir, cn string) (certPath, keyPath string) {
 	return certPath, keyPath
 }
 
-func leafCN(t *testing.T, cert *x509.Certificate) string {
-	t.Helper()
-	return cert.Subject.CommonName
-}
-
 func TestReloaderInitialLoad(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
@@ -67,7 +62,7 @@ func TestReloaderInitialLoad(t *testing.T) {
 		t.Fatalf("GetCertificate: %v", err)
 	}
 	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
-	if got := leafCN(t, leaf); got != "first" {
+	if got := leaf.Subject.CommonName; got != "first" {
 		t.Errorf("CN = %q, want first", got)
 	}
 }
@@ -96,7 +91,7 @@ func TestReloaderPicksUpRotation(t *testing.T) {
 		t.Fatalf("GetCertificate after rotation: %v", err)
 	}
 	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
-	if got := leafCN(t, leaf); got != "second" {
+	if got := leaf.Subject.CommonName; got != "second" {
 		t.Errorf("CN = %q, want second", got)
 	}
 }
@@ -125,7 +120,7 @@ func TestReloaderServesStaleOnReloadFailure(t *testing.T) {
 		t.Fatalf("GetCertificate: %v", err)
 	}
 	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
-	if got := leafCN(t, leaf); got != "first" {
+	if got := leaf.Subject.CommonName; got != "first" {
 		t.Errorf("stale CN = %q, want first (reload should fall through)", got)
 	}
 }

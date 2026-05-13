@@ -68,16 +68,11 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		errs = append(errs, fmt.Sprintf("spec.agent.mode must be clone or run, got %q", cs.Spec.Agent.Mode))
 	}
 	errs = append(errs, validateVMOptions("spec.agent", cs.Spec.Agent.VMOptions, cs.Spec.Agent.Image)...)
-
-	// Firecracker restores the full memory snapshot on clone, freezing the
-	// guest network state (MAC + IP). Cross-node clones end up with an
-	// unreachable IP from the source node's DHCP pool. CH works around this
-	// via NIC hot-swap; FC has no equivalent. Force FC users to mode=run.
-	if cs.Spec.Agent.Backend.Default() == cocoonv1.BackendFirecracker && cs.Spec.Agent.Mode.Default() == cocoonv1.AgentModeClone {
-		errs = append(errs, "spec.agent: firecracker does not support clone mode, use mode=run instead")
+	if msg := firecrackerModeError("spec.agent", cs.Spec.Agent.Backend, string(cs.Spec.Agent.Mode.Default())); msg != "" {
+		errs = append(errs, msg)
 	}
 
-	seen := map[string]bool{}
+	seen := map[string]struct{}{}
 	agentBackend := cs.Spec.Agent.Backend.Default()
 	for i, tb := range cs.Spec.Toolboxes {
 		path := fmt.Sprintf("spec.toolboxes[%d]", i)
@@ -91,10 +86,10 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		if _, err := strconv.Atoi(tb.Name); err == nil {
 			errs = append(errs, fmt.Sprintf("%s.name %q must not be purely numeric (conflicts with agent slot naming)", path, tb.Name))
 		}
-		if seen[tb.Name] {
+		if _, ok := seen[tb.Name]; ok {
 			errs = append(errs, fmt.Sprintf("%s.name %q duplicates an earlier toolbox", path, tb.Name))
 		}
-		seen[tb.Name] = true
+		seen[tb.Name] = struct{}{}
 
 		if tb.Mode != "" && !tb.Mode.IsValid() {
 			errs = append(errs, fmt.Sprintf("%s.mode must be run, clone, or static, got %q", path, tb.Mode))
@@ -110,14 +105,21 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			errs = append(errs, path+".image is required when mode is run or clone")
 		}
 
+		// ConnType applies to every toolbox — clients still reach static
+		// toolboxes via SSH/RDP/VNC/ADB, so the enum must be validated even
+		// when the rest of the VM options are skipped.
+		if err := validateConnType(path, tb.ConnType); err != "" {
+			errs = append(errs, err)
+		}
+
 		// Static toolboxes run no hypervisor locally; skip backend/image consistency checks.
 		if tb.Mode != cocoonv1.ToolboxModeStatic {
 			errs = append(errs, validateVMOptions(path, tb.VMOptions, tb.Image)...)
 			if tb.Backend.Default() != agentBackend {
 				errs = append(errs, fmt.Sprintf("%s.backend %q must match spec.agent.backend %q", path, tb.Backend.Default(), agentBackend))
 			}
-			if tb.Backend.Default() == cocoonv1.BackendFirecracker && tb.Mode.Default() == cocoonv1.ToolboxModeClone {
-				errs = append(errs, fmt.Sprintf("%s: firecracker does not support clone mode, use mode=run instead", path))
+			if msg := firecrackerModeError(path, tb.Backend, string(tb.Mode.Default())); msg != "" {
+				errs = append(errs, msg)
 			}
 		}
 	}
@@ -143,8 +145,8 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	if opts.OS != "" && !opts.OS.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.os must be linux, windows, or android, got %q", path, opts.OS))
 	}
-	if opts.ConnType != "" && !opts.ConnType.IsValid() {
-		errs = append(errs, fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, opts.ConnType))
+	if err := validateConnType(path, opts.ConnType); err != "" {
+		errs = append(errs, err)
 	}
 	if opts.Backend != "" && !opts.Backend.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.backend must be cloud-hypervisor or firecracker, got %q", path, opts.Backend))
@@ -163,4 +165,31 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	}
 
 	return errs
+}
+
+// validateConnType returns the error message for an invalid ConnType, empty
+// when unset or valid. Called outside validateVMOptions so static toolboxes
+// can still validate the field.
+func validateConnType(path string, ct cocoonv1.ConnType) string {
+	if ct == "" || ct.IsValid() {
+		return ""
+	}
+	return fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, ct)
+}
+
+// firecrackerModeError returns the error message when a firecracker backend
+// is paired with mode != run. Firecracker restores the memory snapshot on
+// clone, freezing guest network state (MAC + IP) — cross-node clones land
+// with an unreachable IP from the source's DHCP pool. CH hot-swaps the NIC
+// to work around this; FC has no equivalent. The mode arg accepts either
+// AgentMode or ToolboxMode as a string since both enums share the "run"
+// literal.
+func firecrackerModeError(path string, backend cocoonv1.Backend, mode string) string {
+	if backend.Default() != cocoonv1.BackendFirecracker {
+		return ""
+	}
+	if mode == string(cocoonv1.AgentModeRun) {
+		return ""
+	}
+	return fmt.Sprintf("%s: firecracker does not support %s mode, use mode=run instead", path, mode)
 }
