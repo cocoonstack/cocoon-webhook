@@ -47,11 +47,11 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 
 	var oldScale, newScale autoscalingv1.Scale
 	if err := json.Unmarshal(req.OldObject.Raw, &oldScale); err != nil {
-		logger.Errorf(ctx, err, "decode old Scale %s/%s", req.Namespace, req.Name)
+		logger.Warnf(ctx, "decode old Scale %s/%s: %v", req.Namespace, req.Name, err)
 		return commonadmission.Allow()
 	}
 	if err := json.Unmarshal(req.Object.Raw, &newScale); err != nil {
-		logger.Errorf(ctx, err, "decode new Scale %s/%s", req.Namespace, req.Name)
+		logger.Warnf(ctx, "decode new Scale %s/%s: %v", req.Namespace, req.Name, err)
 		return commonadmission.Allow()
 	}
 
@@ -70,7 +70,6 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 }
 
 func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.AdmissionRequest) ([]corev1.Toleration, bool, error) {
-	logger := log.WithFunc("fetchParentTolerations")
 	switch req.Resource.Resource {
 	case "deployments":
 		dep, err := s.client.AppsV1().Deployments(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
@@ -78,7 +77,6 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 			if apierrors.IsNotFound(err) {
 				return nil, false, nil
 			}
-			logger.Errorf(ctx, err, "get parent Deployment %s/%s", req.Namespace, req.Name)
 			return nil, false, fmt.Errorf("get parent deployment: %w", err)
 		}
 		return dep.Spec.Template.Spec.Tolerations, true, nil
@@ -88,7 +86,6 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 			if apierrors.IsNotFound(err) {
 				return nil, false, nil
 			}
-			logger.Errorf(ctx, err, "get parent StatefulSet %s/%s", req.Namespace, req.Name)
 			return nil, false, fmt.Errorf("get parent statefulset: %w", err)
 		}
 		return sts.Spec.Template.Spec.Tolerations, true, nil
