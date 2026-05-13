@@ -296,6 +296,25 @@ func TestValidateCocoonSetSpecStaticToolboxSkipsBackend(t *testing.T) {
 	}
 }
 
+func TestValidateCocoonSetSpecStaticToolboxValidatesConnType(t *testing.T) {
+	// Static toolboxes skip backend/image checks, but ConnType still applies
+	// because clients reach them via SSH/RDP/VNC/ADB regardless of where the
+	// VM runs.
+	cs := &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+		Agent: cocoonv1.AgentSpec{Image: "x"},
+		Toolboxes: []cocoonv1.ToolboxSpec{{
+			Name:       "static-box",
+			Mode:       cocoonv1.ToolboxModeStatic,
+			StaticIP:   "10.1.2.3",
+			StaticVMID: "vm-aaa",
+			VMOptions:  cocoonv1.VMOptions{ConnType: "telnet"},
+		}},
+	}}
+	if !slices.ContainsFunc(validateCocoonSetSpec(cs), func(e string) bool { return strings.Contains(e, "connType must be ssh") }) {
+		t.Errorf("expected static toolbox connType rejection, got %v", validateCocoonSetSpec(cs))
+	}
+}
+
 func TestSpecEqualDetectsMetadataOnlyChange(t *testing.T) {
 	base := cocoonv1.CocoonSet{
 		Spec: cocoonv1.CocoonSetSpec{

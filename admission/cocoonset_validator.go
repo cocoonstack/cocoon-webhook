@@ -105,6 +105,13 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			errs = append(errs, path+".image is required when mode is run or clone")
 		}
 
+		// ConnType applies to every toolbox — clients still reach static
+		// toolboxes via SSH/RDP/VNC/ADB, so the enum must be validated even
+		// when the rest of the VM options are skipped.
+		if err := validateConnType(path, tb.ConnType); err != "" {
+			errs = append(errs, err)
+		}
+
 		// Static toolboxes run no hypervisor locally; skip backend/image consistency checks.
 		if tb.Mode != cocoonv1.ToolboxModeStatic {
 			errs = append(errs, validateVMOptions(path, tb.VMOptions, tb.Image)...)
@@ -138,8 +145,8 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	if opts.OS != "" && !opts.OS.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.os must be linux, windows, or android, got %q", path, opts.OS))
 	}
-	if opts.ConnType != "" && !opts.ConnType.IsValid() {
-		errs = append(errs, fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, opts.ConnType))
+	if err := validateConnType(path, opts.ConnType); err != "" {
+		errs = append(errs, err)
 	}
 	if opts.Backend != "" && !opts.Backend.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.backend must be cloud-hypervisor or firecracker, got %q", path, opts.Backend))
@@ -158,6 +165,17 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	}
 
 	return errs
+}
+
+// validateConnType validates the ConnType enum. It returns an empty string
+// when ct is unset or valid, so it can be appended without a nil guard.
+// Lifted out of validateVMOptions so static toolboxes can still validate
+// the field while skipping hypervisor checks.
+func validateConnType(path string, ct cocoonv1.ConnType) string {
+	if ct == "" || ct.IsValid() {
+		return ""
+	}
+	return fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, ct)
 }
 
 // firecrackerSupportsMode returns a non-nil error when backend defaults to
