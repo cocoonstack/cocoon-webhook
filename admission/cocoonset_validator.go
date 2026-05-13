@@ -72,7 +72,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		errs = append(errs, "spec.agent: "+err.Error())
 	}
 
-	seen := map[string]bool{}
+	seen := map[string]struct{}{}
 	agentBackend := cs.Spec.Agent.Backend.Default()
 	for i, tb := range cs.Spec.Toolboxes {
 		path := fmt.Sprintf("spec.toolboxes[%d]", i)
@@ -86,10 +86,10 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		if _, err := strconv.Atoi(tb.Name); err == nil {
 			errs = append(errs, fmt.Sprintf("%s.name %q must not be purely numeric (conflicts with agent slot naming)", path, tb.Name))
 		}
-		if seen[tb.Name] {
+		if _, ok := seen[tb.Name]; ok {
 			errs = append(errs, fmt.Sprintf("%s.name %q duplicates an earlier toolbox", path, tb.Name))
 		}
-		seen[tb.Name] = true
+		seen[tb.Name] = struct{}{}
 
 		if tb.Mode != "" && !tb.Mode.IsValid() {
 			errs = append(errs, fmt.Sprintf("%s.mode must be run, clone, or static, got %q", path, tb.Mode))
