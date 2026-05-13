@@ -46,12 +46,12 @@ func main() {
 
 	reloader, err := certs.NewReloader(ctx, certFile, keyFile)
 	if err != nil {
-		logger.Fatalf(ctx, err, "load TLS keypair")
+		logger.Fatalf(ctx, err, "load TLS keypair: %v", err)
 	}
 
 	clientset, err := commonk8s.NewClientset()
 	if err != nil {
-		logger.Fatalf(ctx, err, "build clientset")
+		logger.Fatalf(ctx, err, "build clientset: %v", err)
 	}
 
 	webhookServer := commonhttpx.NewServer(listen, admission.NewServer(clientset).Routes())
