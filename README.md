@@ -32,6 +32,7 @@ The CRD ships with `+kubebuilder` enum / required / default markers, but the web
 - `spec.toolboxes[*]` static mode requires both `staticIP` and `staticVMID`
 - `spec.toolboxes[*]` non-static modes require `image`
 - `spec.toolboxes[*].backend` must match `spec.agent.backend` (static toolboxes skip this check)
+- `spec.toolboxes[*]` static-mode entries must declare a valid `connType` (`ssh` / `rdp` / `vnc` / `adb`)
 - `spec.snapshotPolicy ∈ {always, main-only, never}`
 
 ## Configuration
