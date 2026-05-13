@@ -1,3 +1,9 @@
+# Registered as MutatingWebhookConfiguration even though the handler never
+# emits a patch. Mutating webhooks run before any validating webhook, so
+# Denying a bare cocoon pod here short-circuits the rest of the admission
+# chain instead of letting other mutators run a full pass on a request that
+# is going to be rejected. See admission/pod_mutator.go for the matching
+# in-code note.
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
