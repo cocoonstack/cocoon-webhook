@@ -68,8 +68,8 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		errs = append(errs, fmt.Sprintf("spec.agent.mode must be clone or run, got %q", cs.Spec.Agent.Mode))
 	}
 	errs = append(errs, validateVMOptions("spec.agent", cs.Spec.Agent.VMOptions, cs.Spec.Agent.Image)...)
-	if err := firecrackerSupportsMode(cs.Spec.Agent.Backend, string(cs.Spec.Agent.Mode.Default())); err != nil {
-		errs = append(errs, "spec.agent: "+err.Error())
+	if msg := firecrackerModeError("spec.agent", cs.Spec.Agent.Backend, string(cs.Spec.Agent.Mode.Default())); msg != "" {
+		errs = append(errs, msg)
 	}
 
 	seen := map[string]struct{}{}
@@ -118,8 +118,8 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			if tb.Backend.Default() != agentBackend {
 				errs = append(errs, fmt.Sprintf("%s.backend %q must match spec.agent.backend %q", path, tb.Backend.Default(), agentBackend))
 			}
-			if err := firecrackerSupportsMode(tb.Backend, string(tb.Mode.Default())); err != nil {
-				errs = append(errs, path+": "+err.Error())
+			if msg := firecrackerModeError(path, tb.Backend, string(tb.Mode.Default())); msg != "" {
+				errs = append(errs, msg)
 			}
 		}
 	}
@@ -167,10 +167,9 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	return errs
 }
 
-// validateConnType validates the ConnType enum. It returns an empty string
-// when ct is unset or valid, so it can be appended without a nil guard.
-// Lifted out of validateVMOptions so static toolboxes can still validate
-// the field while skipping hypervisor checks.
+// validateConnType returns the error message for an invalid ConnType, empty
+// when unset or valid. Called outside validateVMOptions so static toolboxes
+// can still validate the field.
 func validateConnType(path string, ct cocoonv1.ConnType) string {
 	if ct == "" || ct.IsValid() {
 		return ""
@@ -178,21 +177,19 @@ func validateConnType(path string, ct cocoonv1.ConnType) string {
 	return fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, ct)
 }
 
-// firecrackerSupportsMode returns a non-nil error when backend defaults to
-// firecracker and mode is anything other than "run". Firecracker restores
-// the full memory snapshot on clone, freezing the guest network state (MAC +
-// IP); cross-node clones land with an unreachable IP from the source node's
-// DHCP pool. CH works around this via NIC hot-swap; FC has no equivalent.
-// Callers prepend the path prefix when appending to the error slice. The
-// mode arg accepts the string value of either AgentMode or ToolboxMode —
-// both enum types share the "run" literal so a string-typed helper avoids
-// duplicating the check.
-func firecrackerSupportsMode(backend cocoonv1.Backend, mode string) error {
+// firecrackerModeError returns the error message when a firecracker backend
+// is paired with mode != run. Firecracker restores the memory snapshot on
+// clone, freezing guest network state (MAC + IP) — cross-node clones land
+// with an unreachable IP from the source's DHCP pool. CH hot-swaps the NIC
+// to work around this; FC has no equivalent. The mode arg accepts either
+// AgentMode or ToolboxMode as a string since both enums share the "run"
+// literal.
+func firecrackerModeError(path string, backend cocoonv1.Backend, mode string) string {
 	if backend.Default() != cocoonv1.BackendFirecracker {
-		return nil
+		return ""
 	}
 	if mode == string(cocoonv1.AgentModeRun) {
-		return nil
+		return ""
 	}
-	return fmt.Errorf("firecracker does not support %s mode, use mode=run instead", mode)
+	return fmt.Sprintf("%s: firecracker does not support %s mode, use mode=run instead", path, mode)
 }
