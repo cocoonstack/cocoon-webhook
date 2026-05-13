@@ -33,10 +33,9 @@ const (
 
 func main() {
 	ctx := context.Background()
+	commonlog.Setup(ctx, "WEBHOOK_LOG_LEVEL")
+
 	logger := log.WithFunc("main")
-	if err := commonlog.Setup(ctx, "WEBHOOK_LOG_LEVEL"); err != nil {
-		logger.Fatalf(ctx, err, "setup log: %v", err)
-	}
 
 	metrics.Register(prometheus.DefaultRegisterer)
 
