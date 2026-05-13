@@ -63,7 +63,7 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 	if !ok {
 		return commonadmission.Allow()
 	}
-	if !meta.HasCocoonToleration(tolerations) {
+	if !meta.HasCocoonTolerationKey(tolerations) {
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, oldScale.Spec.Replicas, newScale.Spec.Replicas)
@@ -102,7 +102,7 @@ func validateDeploymentScaleDown(ctx context.Context, req *admissionv1.Admission
 	if !decodeUpdatePair(ctx, "validateDeploymentScaleDown", req, &oldObj, &newObj) {
 		return commonadmission.Allow()
 	}
-	if !meta.HasCocoonToleration(oldObj.Spec.Template.Spec.Tolerations) {
+	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, deploymentReplicas(&oldObj), deploymentReplicas(&newObj))
@@ -113,7 +113,7 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 	if !decodeUpdatePair(ctx, "validateStatefulSetScaleDown", req, &oldObj, &newObj) {
 		return commonadmission.Allow()
 	}
-	if !meta.HasCocoonToleration(oldObj.Spec.Template.Spec.Tolerations) {
+	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, statefulSetReplicas(&oldObj), statefulSetReplicas(&newObj))

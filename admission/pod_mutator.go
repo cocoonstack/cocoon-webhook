@@ -40,7 +40,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 		return commonadmission.Allow()
 	}
 
-	if !meta.HasCocoonToleration(pod.Spec.Tolerations) {
+	if !meta.HasCocoonTolerationKey(pod.Spec.Tolerations) {
 		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAllow)
 		return commonadmission.Allow()
 	}
