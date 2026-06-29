@@ -118,8 +118,7 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 
 // decodeUpdatePair decodes req.OldObject and req.Object into the provided
 // pointers. Returns false and logs a warning on malformed payloads so callers
-// can fail open — apiserver will reject the malformed request anyway, so this
-// is bad client input rather than a webhook failure.
+// can fail open — apiserver rejects the malformed request anyway.
 func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
 	logger := log.WithFunc(fn)
 	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {

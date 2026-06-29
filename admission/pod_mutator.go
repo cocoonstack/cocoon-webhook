@@ -13,15 +13,11 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-// mutatePod no longer emits patches — it only Allows or Denies. The handler
-// kept its "mutate" name and stayed registered under MutatingWebhookConfiguration
-// because mutating webhooks run before any validating webhook in the admission
-// chain, so a bare-pod Deny here short-circuits the rest of the chain instead
-// of letting it run a full mutation pass on a request that's going to be
-// rejected anyway. config/webhook/configuration.yaml carries the same note.
-// If a future change needs to actually patch pods, restore the JSONPatch
-// flow; if not, this stays a pure validator that happens to live on the
-// mutate path.
+// mutatePod emits no patches — it only Allows or Denies. It keeps the mutate
+// name and MutatingWebhookConfiguration registration because mutating webhooks
+// run before validating ones, so a bare-pod Deny here short-circuits the chain
+// instead of running a full mutation pass on a doomed request.
+// config/webhook/configuration.yaml carries the same note.
 func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("mutatePod")
 	req := review.Request
@@ -33,8 +29,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 
 	var pod corev1.Pod
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
-		// Bad client input — apiserver will reject the request anyway.
-		// Fail open and Allow.
+		// Bad client input — apiserver will reject it anyway, so fail open.
 		logger.Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
 		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionError)
 		return commonadmission.Allow()
