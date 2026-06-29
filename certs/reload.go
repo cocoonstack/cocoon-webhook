@@ -55,8 +55,7 @@ func NewReloader(ctx context.Context, certFile, keyFile string) (*Reloader, erro
 func (r *Reloader) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if r.mtimeChanged() {
 		if err := r.load(); err != nil {
-			log.WithFunc("certs.Reloader.GetCertificate").Errorf(r.ctx, err,
-				"reload TLS keypair, serving stale cert")
+			log.WithFunc("GetCertificate").Error(r.ctx, err, "reload TLS keypair, serving stale cert")
 		}
 	}
 	r.mu.RLock()
