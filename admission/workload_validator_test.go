@@ -15,6 +15,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/cocoonstack/cocoon-common/meta"
+	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
 func TestCheckScaleDownAllowsScaleUp(t *testing.T) {
@@ -151,6 +152,23 @@ func TestValidateScaleDownBlocksWhenOldHasToleration(t *testing.T) {
 	resp := validateDeploymentScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("scale-down should be blocked when old object has cocoon toleration")
+	}
+}
+
+// TestValidateWorkloadRecordsExactlyOneSampleOnCreate pins one-sample-per-request
+// on a validator early-return path: a non-Update op is skipped/operation.
+func TestValidateWorkloadRecordsExactlyOneSampleOnCreate(t *testing.T) {
+	metrics.AdmissionTotal.Reset()
+	srv := newTestServer(t)
+	review := buildUpdateReview(t, "Deployment", newDeployment(5, true), newDeployment(2, true))
+	review.Request.Operation = admissionv1.Create
+	srv.validateWorkload(t.Context(), review)
+
+	if series, total := collectAdmission(t); series != 1 || total != 1 {
+		t.Fatalf("want exactly one admission sample, got series=%d total=%v", series, total)
+	}
+	if got := admissionValue(t, metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonOperation); got != 1 {
+		t.Errorf("validate/skipped/operation = %v, want 1", got)
 	}
 }
 

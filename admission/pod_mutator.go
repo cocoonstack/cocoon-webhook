@@ -23,7 +23,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	req := review.Request
 
 	if req.Kind.Kind != "Pod" {
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAllow)
+		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonKind)
 		return commonadmission.Allow()
 	}
 
@@ -31,21 +31,21 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 		// Bad client input — apiserver will reject it anyway, so fail open.
 		logger.Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionError)
+		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultError, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
 
 	if !meta.HasCocoonTolerationKey(pod.Spec.Tolerations) {
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAllow)
+		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 		return commonadmission.Allow()
 	}
 
 	if meta.IsOwnedByCocoonSet(pod.OwnerReferences) {
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionAllow)
+		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultAllow, "")
 		return commonadmission.Allow()
 	}
 
 	logger.Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
-	metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionDeny)
+	metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultDeny, "")
 	return commonadmission.Deny("cocoon pods must be managed by a CocoonSet")
 }

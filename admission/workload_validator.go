@@ -24,6 +24,7 @@ import (
 func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	req := review.Request
 	if req.Operation != admissionv1.Update {
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonOperation)
 		return commonadmission.Allow()
 	}
 	if req.SubResource == "scale" {
@@ -35,6 +36,7 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 	case "StatefulSet":
 		return validateStatefulSetScaleDown(ctx, req)
 	default:
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonKind)
 		return commonadmission.Allow()
 	}
 }
@@ -48,22 +50,27 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 	var oldScale, newScale autoscalingv1.Scale
 	if err := json.Unmarshal(req.OldObject.Raw, &oldScale); err != nil {
 		logger.Warnf(ctx, "decode old Scale %s/%s: %v", req.Namespace, req.Name, err)
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
 	if err := json.Unmarshal(req.Object.Raw, &newScale); err != nil {
 		logger.Warnf(ctx, "decode new Scale %s/%s: %v", req.Namespace, req.Name, err)
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
 
 	tolerations, ok, err := s.fetchParentTolerations(ctx, req)
 	if err != nil {
 		logger.Errorf(ctx, err, "fetch parent tolerations %s/%s", req.Namespace, req.Name)
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultError, "")
 		return commonadmission.Deny(fmt.Sprintf("cocoon-webhook: cannot verify parent workload: %v", err))
 	}
 	if !ok {
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNoParent)
 		return commonadmission.Allow()
 	}
 	if !meta.HasCocoonTolerationKey(tolerations) {
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, oldScale.Spec.Replicas, newScale.Spec.Replicas)
@@ -97,9 +104,11 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 func validateDeploymentScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	var oldObj, newObj appsv1.Deployment
 	if !decodeUpdatePair(ctx, "validateDeploymentScaleDown", req, &oldObj, &newObj) {
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
 	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, deploymentReplicas(&oldObj), deploymentReplicas(&newObj))
@@ -108,9 +117,11 @@ func validateDeploymentScaleDown(ctx context.Context, req *admissionv1.Admission
 func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	var oldObj, newObj appsv1.StatefulSet
 	if !decodeUpdatePair(ctx, "validateStatefulSetScaleDown", req, &oldObj, &newObj) {
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
 	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 		return commonadmission.Allow()
 	}
 	return checkScaleDown(ctx, req, statefulSetReplicas(&oldObj), statefulSetReplicas(&newObj))
@@ -147,7 +158,7 @@ func statefulSetReplicas(s *appsv1.StatefulSet) int32 {
 func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("checkScaleDown")
 	if newReplicas >= oldReplicas {
-		metrics.RecordAdmission(metrics.HandlerValidate, metrics.DecisionAllow)
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultAllow, "")
 		return commonadmission.Allow()
 	}
 	msg := fmt.Sprintf(
@@ -156,6 +167,6 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldR
 		req.Kind.Kind, req.Namespace, req.Name, oldReplicas, newReplicas,
 	)
 	logger.Warn(ctx, msg)
-	metrics.RecordAdmission(metrics.HandlerValidate, metrics.DecisionDeny)
+	metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultDeny, "")
 	return commonadmission.Deny(msg)
 }

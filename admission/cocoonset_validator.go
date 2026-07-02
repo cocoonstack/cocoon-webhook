@@ -23,12 +23,14 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 	req := review.Request
 
 	if req.Operation != admissionv1.Create && req.Operation != admissionv1.Update {
+		metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultSkipped, metrics.ReasonOperation)
 		return commonadmission.Allow()
 	}
 
 	var cs cocoonv1.CocoonSet
 	if err := json.Unmarshal(req.Object.Raw, &cs); err != nil {
 		logger.Errorf(ctx, err, "decode cocoonset %s/%s", req.Namespace, req.Name)
+		metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultError, metrics.ReasonDecode)
 		return commonadmission.Deny(fmt.Sprintf("decode CocoonSet: %v", err))
 	}
 
@@ -41,6 +43,7 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 		if err := json.Unmarshal(req.OldObject.Raw, &old); err != nil {
 			logger.Warnf(ctx, "decode old cocoonset %s/%s: %v", req.Namespace, req.Name, err)
 		} else if specEqual(&cs, &old) {
+			metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultSkipped, metrics.ReasonNoChange)
 			return commonadmission.Allow()
 		}
 	}
@@ -48,10 +51,10 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 	if errs := validateCocoonSetSpec(&cs); len(errs) > 0 {
 		msg := "cocoon-webhook: invalid CocoonSet spec: " + strings.Join(errs, "; ")
 		logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
-		metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.DecisionDeny)
+		metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultDeny, "")
 		return commonadmission.Deny(msg)
 	}
-	metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.DecisionAllow)
+	metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultAllow, "")
 	return commonadmission.Allow()
 }
 
