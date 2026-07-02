@@ -94,7 +94,7 @@ func newTestServer(t *testing.T) *Server {
 }
 
 // collectAdmission reads metrics.AdmissionTotal off the collector directly —
-// testutil would add a module not in go.mod. Returns series count and summed value.
+// testutil would add a module not in go.mod.
 func collectAdmission(t *testing.T) (series int, total float64) {
 	t.Helper()
 	ch := make(chan prometheus.Metric)

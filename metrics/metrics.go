@@ -14,20 +14,21 @@ const (
 	HandlerValidate          = "validate"
 	HandlerValidateCocoonSet = "validate_cocoonset"
 
-	// Result label values. allow/deny/error are real adjudications; skipped
-	// marks a request the webhook passed through without adjudicating.
+	// Result label values. skipped marks a request passed through without
+	// adjudicating (incl. fail-open decode); fail-closed failures are error.
 	ResultAllow   = "allow"
 	ResultDeny    = "deny"
 	ResultError   = "error"
 	ResultSkipped = "skipped"
 
-	// Reason label values qualifying a skipped/error result; "" for adjudications.
-	ReasonOperation = "operation"
-	ReasonKind      = "kind"
-	ReasonDecode    = "decode"
-	ReasonNoParent  = "no_parent"
-	ReasonNotCocoon = "not_cocoon"
-	ReasonNoChange  = "no_change"
+	// Reason label values qualifying skipped/error; "" only for allow/deny.
+	ReasonOperation   = "operation"
+	ReasonKind        = "kind"
+	ReasonDecode      = "decode"
+	ReasonNoParent    = "no_parent"
+	ReasonNotCocoon   = "not_cocoon"
+	ReasonNoChange    = "no_change"
+	ReasonParentFetch = "parent_fetch"
 
 	metricNamespace = "cocoon"
 	metricSubsystem = "webhook"

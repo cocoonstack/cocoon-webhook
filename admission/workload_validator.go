@@ -62,7 +62,7 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 	tolerations, ok, err := s.fetchParentTolerations(ctx, req)
 	if err != nil {
 		logger.Errorf(ctx, err, "fetch parent tolerations %s/%s", req.Namespace, req.Name)
-		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultError, "")
+		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultError, metrics.ReasonParentFetch)
 		return commonadmission.Deny(fmt.Sprintf("cocoon-webhook: cannot verify parent workload: %v", err))
 	}
 	if !ok {

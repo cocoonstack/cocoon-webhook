@@ -31,7 +31,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 		// Bad client input — apiserver will reject it anyway, so fail open.
 		logger.Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultError, metrics.ReasonDecode)
+		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
 
