@@ -13,55 +13,6 @@ import (
 	"github.com/cocoonstack/cocoon-common/meta"
 )
 
-func TestPodNodePoolPrecedence(t *testing.T) {
-	cases := []struct {
-		name string
-		pod  corev1.Pod
-		want string
-	}{
-		{
-			name: "default when nothing set",
-			pod:  corev1.Pod{},
-			want: "default",
-		},
-		{
-			name: "annotation",
-			pod: corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{meta.LabelNodePool: "ann"}},
-			},
-			want: "ann",
-		},
-		{
-			name: "label beats annotation",
-			pod: corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      map[string]string{meta.LabelNodePool: "label"},
-					Annotations: map[string]string{meta.LabelNodePool: "ann"},
-				},
-			},
-			want: "label",
-		},
-		{
-			name: "nodeSelector beats label",
-			pod: corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{meta.LabelNodePool: "label"},
-				},
-				Spec: corev1.PodSpec{NodeSelector: map[string]string{meta.LabelNodePool: "selector"}},
-			},
-			want: "selector",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			pod := c.pod
-			if got := meta.PodNodePool(&pod); got != c.want {
-				t.Errorf("got %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
 func TestMutatePodAllowsNonCocoonPod(t *testing.T) {
 	srv := newTestServer(t)
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"}}

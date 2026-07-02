@@ -45,7 +45,6 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 		return commonadmission.Allow()
 	}
 
-	// Bare pods with cocoon toleration are not supported; must use CocoonSet.
 	logger.Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
 	metrics.RecordAdmission(metrics.HandlerMutate, metrics.DecisionDeny)
 	return commonadmission.Deny("cocoon pods must be managed by a CocoonSet")

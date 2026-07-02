@@ -14,13 +14,12 @@ import (
 	"github.com/projecteru2/core/log"
 )
 
-// Reloader caches a TLS keypair loaded from disk and re-reads it when
-// either file's mtime advances past the cached load time. Reload errors
-// log and fall through to the stale cert — a cert-manager rotation glitch
-// shouldn't drop in-flight handshakes.
+// Reloader caches a TLS keypair and re-reads it when either file's mtime
+// advances past the cached load time, so cert-manager rotations land without a
+// pod restart. Reload errors fall through to the stale cert rather than drop
+// in-flight handshakes.
 //
-// The parent ctx is stashed for logging only because tls.Config.GetCertificate
-// has no ctx parameter; reload itself doesn't honor cancellation.
+// ctx is stashed for logging only: tls.Config.GetCertificate takes no ctx.
 type Reloader struct {
 	ctx      context.Context
 	certFile string
@@ -41,17 +40,11 @@ func NewReloader(ctx context.Context, certFile, keyFile string) (*Reloader, erro
 	return r, nil
 }
 
-// GetCertificate is the tls.Config.GetCertificate callback. Stats both
-// files; if either mtime is newer than our cached load, re-reads. Stat
-// is cheap enough to do per-handshake — webhooks handle handshakes at
-// admission rate, not request rate.
-//
-// Under simultaneous handshakes multiple goroutines can pass mtimeChanged
-// before any of them completes load(), so the same file gets re-read
-// concurrently. We tolerate the thundering-herd window because every
-// concurrent reader produces identical cert content; the only cost is
-// redundant LoadX509KeyPair calls during a rotation. Worth it to keep
-// the read path lock-free under steady state.
+// GetCertificate is the tls.Config.GetCertificate callback. It stats both files
+// per handshake — cheap at admission rates — and reloads when either is newer
+// than the cached load. Concurrent handshakes during a rotation may each reload;
+// that is tolerated to keep the read path lock-free, since every reader loads
+// identical cert content.
 func (r *Reloader) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if r.mtimeChanged() {
 		if err := r.load(); err != nil {

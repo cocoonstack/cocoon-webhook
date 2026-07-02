@@ -14,41 +14,6 @@ import (
 	"time"
 )
 
-func writeKeypair(t *testing.T, dir, cn string) (certPath, keyPath string) {
-	t.Helper()
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("genkey: %v", err)
-	}
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: cn},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
-	if err != nil {
-		t.Fatalf("createcert: %v", err)
-	}
-	certPath = filepath.Join(dir, "tls.crt")
-	keyPath = filepath.Join(dir, "tls.key")
-	certPEM, _ := os.Create(certPath)
-	defer certPEM.Close()
-	if err := pem.Encode(certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: der}); err != nil {
-		t.Fatalf("encode cert: %v", err)
-	}
-	keyDER, err := x509.MarshalECPrivateKey(priv)
-	if err != nil {
-		t.Fatalf("marshalkey: %v", err)
-	}
-	keyPEM, _ := os.Create(keyPath)
-	defer keyPEM.Close()
-	if err := pem.Encode(keyPEM, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}); err != nil {
-		t.Fatalf("encode key: %v", err)
-	}
-	return certPath, keyPath
-}
-
 func TestReloaderInitialLoad(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
@@ -123,4 +88,39 @@ func TestReloaderServesStaleOnReloadFailure(t *testing.T) {
 	if got := leaf.Subject.CommonName; got != "first" {
 		t.Errorf("stale CN = %q, want first (reload should fall through)", got)
 	}
+}
+
+func writeKeypair(t *testing.T, dir, cn string) (certPath, keyPath string) {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("genkey: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: cn},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("createcert: %v", err)
+	}
+	certPath = filepath.Join(dir, "tls.crt")
+	keyPath = filepath.Join(dir, "tls.key")
+	certPEM, _ := os.Create(certPath)
+	defer certPEM.Close()
+	if err := pem.Encode(certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: der}); err != nil {
+		t.Fatalf("encode cert: %v", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(priv)
+	if err != nil {
+		t.Fatalf("marshalkey: %v", err)
+	}
+	keyPEM, _ := os.Create(keyPath)
+	defer keyPEM.Close()
+	if err := pem.Encode(keyPEM, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}); err != nil {
+		t.Fatalf("encode key: %v", err)
+	}
+	return certPath, keyPath
 }
