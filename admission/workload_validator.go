@@ -111,7 +111,7 @@ func validateDeploymentScaleDown(ctx context.Context, req *admissionv1.Admission
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 		return commonadmission.Allow()
 	}
-	return checkScaleDown(ctx, req, deploymentReplicas(&oldObj), deploymentReplicas(&newObj))
+	return checkScaleDown(ctx, req, replicasOrDefault(oldObj.Spec.Replicas), replicasOrDefault(newObj.Spec.Replicas))
 }
 
 func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
@@ -124,7 +124,7 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 		return commonadmission.Allow()
 	}
-	return checkScaleDown(ctx, req, statefulSetReplicas(&oldObj), statefulSetReplicas(&newObj))
+	return checkScaleDown(ctx, req, replicasOrDefault(oldObj.Spec.Replicas), replicasOrDefault(newObj.Spec.Replicas))
 }
 
 // decodeUpdatePair decodes req.OldObject and req.Object into the provided
@@ -143,16 +143,10 @@ func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.Admission
 	return true
 }
 
-// deploymentReplicas returns the desired replica count, defaulting to 1 when
-// the pointer is nil (matches the apps controller behavior).
-func deploymentReplicas(d *appsv1.Deployment) int32 {
-	return ptr.Deref(d.Spec.Replicas, 1)
-}
-
-// statefulSetReplicas returns the desired replica count, defaulting to 1 when
-// the pointer is nil (matches the apps controller behavior).
-func statefulSetReplicas(s *appsv1.StatefulSet) int32 {
-	return ptr.Deref(s.Spec.Replicas, 1)
+// replicasOrDefault defaults to 1 when the pointer is nil, matching the
+// apps controller's default for Spec.Replicas.
+func replicasOrDefault(r *int32) int32 {
+	return ptr.Deref(r, 1)
 }
 
 func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
