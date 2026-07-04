@@ -14,8 +14,16 @@ webhooks:
   - name: pods.mutate.cocoonstack.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
-    failurePolicy: Ignore
+    # Fail-closed: this webhook's whole purpose is to deny bare cocoon pods,
+    # so Ignore would defeat it. The namespaceSelector below keeps a webhook
+    # outage from wedging cluster-critical namespaces.
+    failurePolicy: Fail
     timeoutSeconds: 5
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: ["kube-system", "kube-node-lease", "kube-public", "cocoon-system", "cert-manager"]
     rules:
       - apiGroups: [""]
         apiVersions: ["v1"]
