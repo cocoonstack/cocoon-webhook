@@ -2,67 +2,18 @@
 
 Kubernetes admission webhook for the [cocoonstack](https://github.com/cocoonstack) VM platform.
 
-## Overview
+cocoon-webhook hosts three admission endpoints: a mutating webhook that
+rejects cocoon-tolerated pods not owned by a CocoonSet, a validating
+webhook that rejects scale-down on cocoon-tolerated Deployments/
+StatefulSets, and a validating webhook that enforces CocoonSet
+cross-field business rules the CRD's OpenAPI schema can't express.
 
-cocoon-webhook hosts three admission endpoints:
+## Documentation
 
-| Endpoint | Type | Resources | What it does |
-|---|---|---|---|
-| `POST /mutate` | Mutating | Pod CREATE | Rejects cocoon-tolerated pods that are not owned by a CocoonSet. CocoonSet-owned pods pass through unmutated. |
-| `POST /validate` | Validating | Deployment / StatefulSet UPDATE | Rejects scale-down on cocoon-tolerated workloads. Bypass path for hand-rolled Deployments/StatefulSets carrying the cocoon toleration — the CocoonSet main flow creates Pods directly and does not traverse this endpoint. |
-| `POST /validate-cocoonset` | Validating | CocoonSet CREATE / UPDATE | Catches the cross-field business rules the CRD's OpenAPI schema cannot express (image required, toolbox name uniqueness, static-mode prerequisites). |
-| `GET /healthz` | Liveness | — | Always 200 once the binary is running. |
-| `GET /readyz` | Readiness | — | Always 200 once the binary is running (liveness-equivalent stub; does not probe apiserver reachability). |
-| `GET /metrics` | Prometheus | — | Plain HTTP on `:9090`, separate from the admission TLS port. |
-
-## CocoonSet validation rules
-
-The CRD ships with `+kubebuilder` enum / required / default markers, but the webhook adds the cross-field business rules:
-
-- `spec.agent.image` must be set
-- `spec.agent.replicas >= 0`
-- `spec.agent.mode ∈ {clone, run}`
-- `spec.agent.os ∈ {linux, windows, android}`
-- `spec.agent.backend ∈ {cloud-hypervisor, firecracker}`
-- `spec.agent.connType ∈ {ssh, rdp, vnc, adb}`
-- firecracker + `os=windows` is rejected (FC cannot boot Windows guests)
-- firecracker + cloudimg URL image is rejected (FC requires OCI images)
-- firecracker + `mode=clone` is rejected (FC snapshot/restore freezes guest network state; use `mode=run`)
-- `spec.toolboxes[*].name` unique and matches RFC 1123
-- `spec.toolboxes[*]` static mode requires both `staticIP` and `staticVMID`
-- `spec.toolboxes[*]` non-static modes require `image`
-- `spec.toolboxes[*].backend` must match `spec.agent.backend` (static toolboxes skip this check)
-- `spec.toolboxes[*]` static-mode entries must declare a valid `connType` (`ssh` / `rdp` / `vnc` / `adb`)
-- `spec.snapshotPolicy ∈ {always, main-only, never}`
-
-## Configuration
-
-| Variable | Default | Description |
-|---|---|---|
-| `KUBECONFIG` | unset | Path to kubeconfig when running outside the cluster (in-cluster config used otherwise) |
-| `WEBHOOK_LOG_LEVEL` | `info` | `projecteru2/core/log` level |
-| `TLS_CERT` | `/etc/cocoon/webhook/certs/tls.crt` | TLS server certificate |
-| `TLS_KEY` | `/etc/cocoon/webhook/certs/tls.key` | TLS server private key |
-| `LISTEN_ADDR` | `:8443` | Admission listener (HTTPS) |
-| `METRICS_ADDR` | `:9090` | Prometheus listener (HTTP) |
-
-## Installation
-
-The supported install path is `kubectl apply -k`:
-
-```bash
-kubectl apply -k github.com/cocoonstack/cocoon-webhook/config/default?ref=main
-```
-
-This installs:
-- `cocoon-system` namespace
-- `ServiceAccount` + `ClusterRole` (read deployments/statefulsets for scale-down validation)
-- cert-manager `Issuer` + `Certificate` (`cocoon-webhook-tls`) — **cert-manager must already be installed in the cluster**
-- `Deployment` (2 replicas) + `Service` (port 443 → 8443, port 9090 → 9090)
-- `MutatingWebhookConfiguration` for Pod CREATE
-- `ValidatingWebhookConfiguration` for Deployment/StatefulSet UPDATE and CocoonSet CREATE/UPDATE
-
-To override the image tag or replica count, build a kustomize overlay that imports `config/default` as a base.
+- [Overview](docs/overview.md) — the admission endpoints and what each one does
+- [CocoonSet validation rules](docs/validation.md) — the cross-field business rules enforced on CocoonSet CREATE/UPDATE
+- [Configuration](docs/configuration.md) — every environment variable
+- [Installation](docs/installation.md) — the `kubectl apply -k` path and building from source
 
 ## Development
 
