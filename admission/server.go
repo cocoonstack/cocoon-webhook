@@ -13,13 +13,15 @@ import (
 
 // Server is the admission webhook HTTP server that handles mutate and validate requests.
 type Server struct {
-	client kubernetes.Interface
-	dyn    dynamic.Interface
+	client      kubernetes.Interface
+	dyn         dynamic.Interface
+	podCreators []string
 }
 
-// NewServer creates an admission Server; dyn reads CocoonHibernation CRs.
-func NewServer(client kubernetes.Interface, dyn dynamic.Interface) *Server {
-	return &Server{client: client, dyn: dyn}
+// NewServer creates an admission Server; dyn reads CocoonHibernation CRs,
+// podCreators lists the usernames allowed to create cocoon pods.
+func NewServer(client kubernetes.Interface, dyn dynamic.Interface, podCreators []string) *Server {
+	return &Server{client: client, dyn: dyn, podCreators: podCreators}
 }
 
 // Routes returns the HTTP handler with all admission webhook routes registered.

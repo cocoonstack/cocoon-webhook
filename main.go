@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ const (
 	defaultKeyFile       = "/etc/cocoon/webhook/certs/tls.key"
 	defaultListen        = ":8443"
 	defaultMetricsListen = ":9090"
+	defaultPodCreators   = "system:serviceaccount:cocoon-system:cocoon-operator"
 
 	shutdownTimeout = 15 * time.Second
 )
@@ -55,7 +57,12 @@ func main() {
 		logger.Fatalf(ctx, err, "build clientset")
 	}
 
-	webhookServer := commonhttpx.NewServer(listen, admission.NewServer(clientset, dyn).Routes())
+	podCreators := strings.Split(commonk8s.EnvOrDefault("POD_CREATORS", defaultPodCreators), ",")
+	for i, c := range podCreators {
+		podCreators[i] = strings.TrimSpace(c)
+	}
+
+	webhookServer := commonhttpx.NewServer(listen, admission.NewServer(clientset, dyn, podCreators).Routes())
 	webhookServer.TLSConfig = &tls.Config{
 		GetCertificate: reloader.GetCertificate,
 		MinVersion:     tls.VersionTLS12,

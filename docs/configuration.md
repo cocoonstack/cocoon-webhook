@@ -10,3 +10,4 @@ cocoon-webhook is configured entirely through environment variables.
 | `TLS_KEY` | `/etc/cocoon/webhook/certs/tls.key` | TLS server private key |
 | `LISTEN_ADDR` | `:8443` | Admission listener (HTTPS) |
 | `METRICS_ADDR` | `:9090` | Prometheus listener (HTTP) |
+| `POD_CREATORS` | `system:serviceaccount:cocoon-system:cocoon-operator` | Comma-separated usernames allowed to create cocoon-tolerated pods |

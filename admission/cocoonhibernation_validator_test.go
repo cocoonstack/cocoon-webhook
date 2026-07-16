@@ -68,7 +68,7 @@ func newHibernationServer(t *testing.T, objs ...runtime.Object) *Server {
 	if err := cocoonv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
-	return NewServer(nil, dynamicfake.NewSimpleDynamicClient(scheme, objs...))
+	return NewServer(nil, dynamicfake.NewSimpleDynamicClient(scheme, objs...), nil)
 }
 
 func hibernation(name, podName string, deleted *metav1.Time) *cocoonv1.CocoonHibernation {

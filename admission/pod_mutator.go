@@ -3,6 +3,8 @@ package admission
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"slices"
 
 	"github.com/projecteru2/core/log"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -38,12 +40,20 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 		return commonadmission.Allow()
 	}
 
-	if meta.IsOwnedByCocoonSet(pod.OwnerReferences) {
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultAllow, "")
-		return commonadmission.Allow()
+	if !meta.IsOwnedByCocoonSet(pod.OwnerReferences) {
+		logger.Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
+		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultDeny, "")
+		return commonadmission.Deny("cocoon pods must be managed by a CocoonSet")
 	}
 
-	logger.Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
-	metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultDeny, "")
-	return commonadmission.Deny("cocoon pods must be managed by a CocoonSet")
+	// Owner references are client-settable and unverified by the apiserver;
+	// the authenticated requester is the only unforgeable signal.
+	if !slices.Contains(s.podCreators, req.UserInfo.Username) {
+		logger.Warnf(ctx, "deny cocoon pod %s/%s: creator %q is not an allowed controller", req.Namespace, req.Name, req.UserInfo.Username)
+		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultDeny, "")
+		return commonadmission.Deny(fmt.Sprintf("cocoon pods must be created by the CocoonSet controller, got user %q", req.UserInfo.Username))
+	}
+
+	metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultAllow, "")
+	return commonadmission.Allow()
 }

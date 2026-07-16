@@ -3,7 +3,7 @@
 Kubernetes admission webhook for the [cocoonstack](https://github.com/cocoonstack) VM platform.
 
 cocoon-webhook hosts four admission endpoints: a mutating webhook that
-rejects cocoon-tolerated pods not owned by a CocoonSet, a validating
+rejects cocoon-tolerated pods not created by the CocoonSet controller, a validating
 webhook that rejects scale-down on cocoon-tolerated Deployments/
 StatefulSets, a validating webhook that enforces CocoonSet cross-field
 business rules the CRD's OpenAPI schema can't express, and a validating

@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	admissionv1 "k8s.io/api/admission/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,6 +16,8 @@ import (
 	"github.com/cocoonstack/cocoon-common/meta"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
+
+const testPodCreator = "system:serviceaccount:cocoon-system:cocoon-operator"
 
 func TestMutatePodAllowsNonCocoonPod(t *testing.T) {
 	srv := newTestServer(t)
@@ -48,6 +51,28 @@ func TestMutatePodAllowsCocoonSetOwnedPod(t *testing.T) {
 	}
 	if len(resp.Patch) != 0 {
 		t.Errorf("cocoonset-owned pod should not be patched")
+	}
+}
+
+func TestMutatePodDeniesForgedOwnerFromOtherCreator(t *testing.T) {
+	srv := newTestServer(t)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "p",
+			Namespace: "ns",
+			OwnerReferences: []metav1.OwnerReference{
+				{Kind: meta.KindCocoonSet, Name: "demo"},
+			},
+		},
+		Spec: corev1.PodSpec{
+			Tolerations: []corev1.Toleration{{Key: meta.TolerationKey}},
+		},
+	}
+	review := buildPodReview(t, pod)
+	review.Request.UserInfo.Username = "system:serviceaccount:ns:attacker"
+	resp := srv.mutatePod(t.Context(), review)
+	if resp.Allowed {
+		t.Errorf("cocoonset owner ref forged by a non-controller creator should be denied")
 	}
 }
 
@@ -90,7 +115,7 @@ func TestMutatePodRecordsExactlyOneSample(t *testing.T) {
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	client := fake.NewSimpleClientset()
-	return NewServer(client, nil)
+	return NewServer(client, nil, []string{testPodCreator})
 }
 
 // collectAdmission reads metrics.AdmissionTotal off the collector directly —
@@ -135,6 +160,7 @@ func buildPodReview(t *testing.T, pod *corev1.Pod) *admissionv1.AdmissionReview 
 			Namespace: pod.Namespace,
 			Name:      pod.Name,
 			Operation: admissionv1.Create,
+			UserInfo:  authenticationv1.UserInfo{Username: testPodCreator},
 			Object:    runtime.RawExtension{Raw: raw},
 		},
 	}

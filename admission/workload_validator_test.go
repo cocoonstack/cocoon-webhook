@@ -138,7 +138,7 @@ func TestServerValidateWorkloadScaleSubresourceAPIErrorDenied(t *testing.T) {
 	client.PrependReactor("get", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, fmt.Errorf("apiserver unavailable")
 	})
-	srv := NewServer(client, nil)
+	srv := NewServer(client, nil, nil)
 	review := buildScaleReview(t, "deployments", 5, 2)
 	resp := srv.validateWorkload(t.Context(), review)
 	if resp.Allowed {
@@ -175,7 +175,7 @@ func TestValidateWorkloadRecordsExactlyOneSampleOnCreate(t *testing.T) {
 func newServerWithObjects(t *testing.T, objs ...runtime.Object) *Server {
 	t.Helper()
 	client := fake.NewSimpleClientset(objs...)
-	return NewServer(client, nil)
+	return NewServer(client, nil, nil)
 }
 
 func buildScaleReview(t *testing.T, resource string, oldReplicas, newReplicas int32) *admissionv1.AdmissionReview {
