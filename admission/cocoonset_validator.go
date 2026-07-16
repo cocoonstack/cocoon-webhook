@@ -58,7 +58,7 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 }
 
 func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
-	errs := make([]string, 0, 16)
+	var errs []string
 
 	if cs.Spec.Agent.Image == "" {
 		errs = append(errs, "spec.agent.image is required")
@@ -70,10 +70,11 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		errs = append(errs, fmt.Sprintf("spec.agent.mode must be clone or run, got %q", cs.Spec.Agent.Mode))
 	}
 	errs = append(errs, validateVMOptions("spec.agent", cs.Spec.Agent.VMOptions, cs.Spec.Agent.Image)...)
-	if msg := firecrackerModeError("spec.agent", cs.Spec.Agent.Backend, string(cs.Spec.Agent.Mode.Default())); msg != "" {
+	agentMode := string(cs.Spec.Agent.Mode.Default())
+	if msg := firecrackerModeError("spec.agent", cs.Spec.Agent.Backend, agentMode); msg != "" {
 		errs = append(errs, msg)
 	}
-	if msg := cloneImageError("spec.agent", string(cs.Spec.Agent.Mode.Default()), cs.Spec.Agent.Image); msg != "" {
+	if msg := cloneImageError("spec.agent", agentMode, cs.Spec.Agent.Image); msg != "" {
 		errs = append(errs, msg)
 	}
 
@@ -99,6 +100,9 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		if tb.Mode != "" && !tb.Mode.IsValid() {
 			errs = append(errs, fmt.Sprintf("%s.mode must be run, clone, or static, got %q", path, tb.Mode))
 		}
+
+		// Static toolboxes run no hypervisor locally: skip backend/image checks
+		// but keep ConnType — clients still reach them via SSH/RDP/VNC/ADB.
 		if tb.Mode == cocoonv1.ToolboxModeStatic {
 			if tb.StaticIP == "" {
 				errs = append(errs, path+".staticIP is required when mode=static")
@@ -106,26 +110,24 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			if tb.StaticVMID == "" {
 				errs = append(errs, path+".staticVMID is required when mode=static")
 			}
-		} else if tb.Image == "" {
-			errs = append(errs, path+".image is required when mode is run or clone")
-		}
-
-		// Static toolboxes run no hypervisor locally: skip backend/image checks
-		// but keep ConnType — clients still reach them via SSH/RDP/VNC/ADB.
-		if tb.Mode == cocoonv1.ToolboxModeStatic {
-			if err := validateConnType(path, tb.ConnType); err != "" {
-				errs = append(errs, err)
+			if msg := validateConnType(path, tb.ConnType); msg != "" {
+				errs = append(errs, msg)
 			}
 			continue
+		}
+
+		if tb.Image == "" {
+			errs = append(errs, path+".image is required when mode is run or clone")
 		}
 		errs = append(errs, validateVMOptions(path, tb.VMOptions, tb.Image)...)
 		if tb.Backend.Default() != agentBackend {
 			errs = append(errs, fmt.Sprintf("%s.backend %q must match spec.agent.backend %q", path, tb.Backend.Default(), agentBackend))
 		}
-		if msg := firecrackerModeError(path, tb.Backend, string(tb.Mode.Default())); msg != "" {
+		tbMode := string(tb.Mode.Default())
+		if msg := firecrackerModeError(path, tb.Backend, tbMode); msg != "" {
 			errs = append(errs, msg)
 		}
-		if msg := cloneImageError(path, string(tb.Mode.Default()), tb.Image); msg != "" {
+		if msg := cloneImageError(path, tbMode, tb.Image); msg != "" {
 			errs = append(errs, msg)
 		}
 	}
@@ -149,8 +151,8 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	if opts.OS != "" && !opts.OS.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.os must be linux, windows, or android, got %q", path, opts.OS))
 	}
-	if err := validateConnType(path, opts.ConnType); err != "" {
-		errs = append(errs, err)
+	if msg := validateConnType(path, opts.ConnType); msg != "" {
+		errs = append(errs, msg)
 	}
 	if opts.Backend != "" && !opts.Backend.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.backend must be cloud-hypervisor or firecracker, got %q", path, opts.Backend))

@@ -54,7 +54,7 @@ func TestCheckScaleDownDeniesDecrement(t *testing.T) {
 func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 	old := newDeployment(5, true)
 	updated := newDeployment(2, true)
-	resp := validateDeploymentScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateWorkloadScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon scale-down should be blocked")
 	}
@@ -63,7 +63,7 @@ func TestValidateDeploymentScaleDownBlocked(t *testing.T) {
 func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 	old := newDeployment(5, false)
 	updated := newDeployment(2, false)
-	resp := validateDeploymentScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateWorkloadScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if !resp.Allowed {
 		t.Errorf("non-cocoon deployment should pass through")
 	}
@@ -72,7 +72,7 @@ func TestValidateDeploymentScaleAllowsNonCocoon(t *testing.T) {
 func TestValidateStatefulSetScaleDownBlocked(t *testing.T) {
 	old := newStatefulSet(5, true)
 	updated := newStatefulSet(2, true)
-	resp := validateStatefulSetScaleDown(t.Context(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
+	resp := validateWorkloadScaleDown(t.Context(), buildUpdateReview(t, "StatefulSet", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("cocoon statefulset scale-down should be blocked")
 	}
@@ -149,7 +149,7 @@ func TestServerValidateWorkloadScaleSubresourceAPIErrorDenied(t *testing.T) {
 func TestValidateScaleDownBlocksWhenOldHasToleration(t *testing.T) {
 	old := newDeployment(5, true)
 	updated := newDeployment(2, false) // toleration removed in same patch
-	resp := validateDeploymentScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
+	resp := validateWorkloadScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("scale-down should be blocked when old object has cocoon toleration")
 	}
@@ -180,35 +180,17 @@ func newServerWithObjects(t *testing.T, objs ...runtime.Object) *Server {
 
 func buildScaleReview(t *testing.T, resource string, oldReplicas, newReplicas int32) *admissionv1.AdmissionReview {
 	t.Helper()
-	oldScale := autoscalingv1.Scale{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "demo"},
-		Spec:       autoscalingv1.ScaleSpec{Replicas: oldReplicas},
+	scale := func(replicas int32) *autoscalingv1.Scale {
+		return &autoscalingv1.Scale{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "demo"},
+			Spec:       autoscalingv1.ScaleSpec{Replicas: replicas},
+		}
 	}
-	newScale := autoscalingv1.Scale{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "demo"},
-		Spec:       autoscalingv1.ScaleSpec{Replicas: newReplicas},
-	}
-	oldRaw, err := json.Marshal(&oldScale)
-	if err != nil {
-		t.Fatalf("marshal old scale: %v", err)
-	}
-	newRaw, err := json.Marshal(&newScale)
-	if err != nil {
-		t.Fatalf("marshal new scale: %v", err)
-	}
-	return &admissionv1.AdmissionReview{
-		Request: &admissionv1.AdmissionRequest{
-			UID:         "test-uid",
-			Kind:        metav1.GroupVersionKind{Group: "autoscaling", Version: "v1", Kind: "Scale"},
-			Resource:    metav1.GroupVersionResource{Group: "apps", Version: "v1", Resource: resource},
-			SubResource: "scale",
-			Namespace:   "ns",
-			Name:        "demo",
-			Operation:   admissionv1.Update,
-			Object:      runtime.RawExtension{Raw: newRaw},
-			OldObject:   runtime.RawExtension{Raw: oldRaw},
-		},
-	}
+	review := buildUpdateReview(t, "Scale", scale(oldReplicas), scale(newReplicas))
+	review.Request.Kind = metav1.GroupVersionKind{Group: "autoscaling", Version: "v1", Kind: "Scale"}
+	review.Request.Resource = metav1.GroupVersionResource{Group: "apps", Version: "v1", Resource: resource}
+	review.Request.SubResource = "scale"
+	return review
 }
 
 func newDeployment(replicas int32, cocoon bool) *appsv1.Deployment {

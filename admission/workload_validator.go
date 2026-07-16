@@ -7,7 +7,6 @@ import (
 
 	"github.com/projecteru2/core/log"
 	admissionv1 "k8s.io/api/admission/v1"
-	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,10 +30,8 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 		return s.validateScaleSubresource(ctx, req)
 	}
 	switch req.Kind.Kind {
-	case "Deployment":
-		return validateDeploymentScaleDown(ctx, req)
-	case "StatefulSet":
-		return validateStatefulSetScaleDown(ctx, req)
+	case "Deployment", "StatefulSet":
+		return validateWorkloadScaleDown(ctx, req)
 	default:
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonKind)
 		return commonadmission.Allow()
@@ -44,23 +41,15 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 // validateScaleSubresource fetches the parent workload to check tolerations:
 // fail-closed on apiserver errors, fail-open on malformed Scale payloads.
 func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
-	logger := log.WithFunc("validateScaleSubresource")
-
 	var oldScale, newScale autoscalingv1.Scale
-	if err := json.Unmarshal(req.OldObject.Raw, &oldScale); err != nil {
-		logger.Warnf(ctx, "decode old Scale %s/%s: %v", req.Namespace, req.Name, err)
-		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
-		return commonadmission.Allow()
-	}
-	if err := json.Unmarshal(req.Object.Raw, &newScale); err != nil {
-		logger.Warnf(ctx, "decode new Scale %s/%s: %v", req.Namespace, req.Name, err)
+	if !decodeUpdatePair(ctx, "validateScaleSubresource", req, &oldScale, &newScale) {
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
 
 	tolerations, ok, err := s.fetchParentTolerations(ctx, req)
 	if err != nil {
-		logger.Errorf(ctx, err, "fetch parent tolerations %s/%s", req.Namespace, req.Name)
+		log.WithFunc("validateScaleSubresource").Errorf(ctx, err, "fetch parent tolerations %s/%s", req.Namespace, req.Name)
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultError, metrics.ReasonParentFetch)
 		return commonadmission.Deny(fmt.Sprintf("cocoon-webhook: cannot verify parent workload: %v", err))
 	}
@@ -100,22 +89,23 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 	}
 }
 
-func validateDeploymentScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
-	var oldObj, newObj appsv1.Deployment
-	if !decodeUpdatePair(ctx, "validateDeploymentScaleDown", req, &oldObj, &newObj) {
-		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
-		return commonadmission.Allow()
-	}
-	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
-		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
-		return commonadmission.Allow()
-	}
-	return checkScaleDown(ctx, req, replicasOrDefault(oldObj.Spec.Replicas), replicasOrDefault(newObj.Spec.Replicas))
+// workloadShape is the narrow slice Deployment and StatefulSet share and the
+// only fields this gate reads: every workload UPDATE cluster-wide pays this
+// decode, so skip the rest of the object.
+type workloadShape struct {
+	Spec struct {
+		Replicas *int32 `json:"replicas"`
+		Template struct {
+			Spec struct {
+				Tolerations []corev1.Toleration `json:"tolerations"`
+			} `json:"spec"`
+		} `json:"template"`
+	} `json:"spec"`
 }
 
-func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
-	var oldObj, newObj appsv1.StatefulSet
-	if !decodeUpdatePair(ctx, "validateStatefulSetScaleDown", req, &oldObj, &newObj) {
+func validateWorkloadScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
+	var oldObj, newObj workloadShape
+	if !decodeUpdatePair(ctx, "validateWorkloadScaleDown", req, &oldObj, &newObj) {
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 		return commonadmission.Allow()
 	}
@@ -129,13 +119,12 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 // decodeUpdatePair decodes req.OldObject and req.Object, returning false on
 // malformed payloads so callers fail open (apiserver rejects those anyway).
 func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
-	logger := log.WithFunc(fn)
 	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {
-		logger.Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
+		log.WithFunc(fn).Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
 		return false
 	}
 	if err := json.Unmarshal(req.Object.Raw, newObj); err != nil {
-		logger.Warnf(ctx, "decode new %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
+		log.WithFunc(fn).Warnf(ctx, "decode new %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
 		return false
 	}
 	return true
@@ -148,7 +137,6 @@ func replicasOrDefault(r *int32) int32 {
 }
 
 func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {
-	logger := log.WithFunc("checkScaleDown")
 	if newReplicas >= oldReplicas {
 		metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultAllow, "")
 		return commonadmission.Allow()
@@ -158,7 +146,7 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldR
 			"Use a CocoonHibernation CR to suspend individual agents.",
 		req.Kind.Kind, req.Namespace, req.Name, oldReplicas, newReplicas,
 	)
-	logger.Warn(ctx, msg)
+	log.WithFunc("checkScaleDown").Warn(ctx, msg)
 	metrics.RecordAdmission(metrics.HandlerValidate, metrics.ResultDeny, "")
 	return commonadmission.Deny(msg)
 }
