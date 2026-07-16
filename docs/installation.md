@@ -8,11 +8,11 @@ kubectl apply -k github.com/cocoonstack/cocoon-webhook/config/default?ref=main
 
 This installs:
 - `cocoon-system` namespace
-- `ServiceAccount` + `ClusterRole` (read deployments/statefulsets for scale-down validation)
+- `ServiceAccount` + `ClusterRole` (read deployments/statefulsets for scale-down validation, list cocoonhibernations for one-CR-per-pod validation)
 - cert-manager `Issuer` + `Certificate` (`cocoon-webhook-tls`) — **cert-manager must already be installed in the cluster**
 - `Deployment` (2 replicas) + `Service` (port 443 → 8443, port 9090 → 9090)
 - `MutatingWebhookConfiguration` for Pod CREATE
-- `ValidatingWebhookConfiguration` for Deployment/StatefulSet UPDATE and CocoonSet CREATE/UPDATE
+- `ValidatingWebhookConfiguration` for Deployment/StatefulSet UPDATE, CocoonSet CREATE/UPDATE, and CocoonHibernation CREATE
 
 To override the image tag or replica count, build a kustomize overlay
 that imports `config/default` as a base. See

@@ -17,9 +17,13 @@ import (
 
 var cocoonHibernationGVR = cocoonv1.GroupVersion.WithResource("cocoonhibernations")
 
-// validateCocoonHibernation rejects a CREATE whose pod already has a live
-// CocoonHibernation — two CRs with opposing desires never converge. CREATE is
-// the only gate needed: retargets are blocked by the CRD's CEL rule.
+// validateCocoonHibernation rejects a CREATE that would give a pod a second
+// CocoonHibernation. metadata.name must equal spec.podRef.name so racing
+// duplicate CREATEs collide on apiserver name uniqueness — a LIST check alone
+// is a TOCTOU race. The list catches pre-rule names, terminating ones
+// included: a predecessor's pending cleanup deletes the pod's hibernate
+// snapshot out from under a successor. CREATE is the only gate needed:
+// retargets are blocked by the CRD's CEL rule.
 func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateCocoonHibernation")
 	req := review.Request
@@ -36,6 +40,14 @@ func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissio
 		return commonadmission.Deny(fmt.Sprintf("decode CocoonHibernation: %v", err))
 	}
 
+	if hib.Name != hib.Spec.PodRef.Name {
+		msg := fmt.Sprintf("cocoon-webhook: metadata.name %q must equal spec.podRef.name %q (one CocoonHibernation per pod, named after it)",
+			hib.Name, hib.Spec.PodRef.Name)
+		logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
+		metrics.RecordAdmission(metrics.HandlerValidateHibernation, metrics.ResultDeny, "")
+		return commonadmission.Deny(msg)
+	}
+
 	// Fail closed on list errors: admitting a possible duplicate risks the
 	// non-converging flip-flop this validator exists to prevent.
 	existing, err := s.dyn.Resource(cocoonHibernationGVR).Namespace(req.Namespace).List(ctx, metav1.ListOptions{})
@@ -50,13 +62,18 @@ func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissio
 			logger.Warnf(ctx, "decode existing cocoonhibernation %s/%s: %v", req.Namespace, existing.Items[i].GetName(), err)
 			continue
 		}
-		if other.DeletionTimestamp == nil && other.Spec.PodRef.Name == hib.Spec.PodRef.Name {
-			msg := fmt.Sprintf("cocoon-webhook: pod %q already has a live CocoonHibernation %q; flip its spec.desire instead of creating a second CR",
-				hib.Spec.PodRef.Name, other.Name)
-			logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
-			metrics.RecordAdmission(metrics.HandlerValidateHibernation, metrics.ResultDeny, "")
-			return commonadmission.Deny(msg)
+		if other.Spec.PodRef.Name != hib.Spec.PodRef.Name {
+			continue
 		}
+		msg := fmt.Sprintf("cocoon-webhook: pod %q already has a live CocoonHibernation %q; flip its spec.desire instead of creating a second CR",
+			hib.Spec.PodRef.Name, other.Name)
+		if other.DeletionTimestamp != nil {
+			msg = fmt.Sprintf("cocoon-webhook: pod %q's CocoonHibernation %q is still terminating; retry after its cleanup finishes",
+				hib.Spec.PodRef.Name, other.Name)
+		}
+		logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
+		metrics.RecordAdmission(metrics.HandlerValidateHibernation, metrics.ResultDeny, "")
+		return commonadmission.Deny(msg)
 	}
 	metrics.RecordAdmission(metrics.HandlerValidateHibernation, metrics.ResultAllow, "")
 	return commonadmission.Allow()

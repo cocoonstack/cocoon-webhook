@@ -16,36 +16,50 @@ import (
 )
 
 func TestValidateCocoonHibernationRejectsSecondLiveCR(t *testing.T) {
-	srv := newHibernationServer(t, hibernation("existing", "pod-a", nil))
-	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "new", "pod-a"))
+	srv := newHibernationServer(t, hibernation("legacy-name", "pod-a", nil))
+	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "pod-a", "pod-a"))
 	if resp.Allowed {
 		t.Fatalf("second live CR on pod-a should be denied")
 	}
-	if !strings.Contains(resp.Result.Message, `"existing"`) {
+	if !strings.Contains(resp.Result.Message, `"legacy-name"`) {
 		t.Errorf("denial should name the existing CR, got %q", resp.Result.Message)
 	}
 }
 
-func TestValidateCocoonHibernationAllowsDeletingPredecessor(t *testing.T) {
+func TestValidateCocoonHibernationRejectsNameMismatch(t *testing.T) {
+	srv := newHibernationServer(t)
+	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "hib-for-pod-a", "pod-a"))
+	if resp.Allowed {
+		t.Fatalf("CR not named after its pod should be denied")
+	}
+	if !strings.Contains(resp.Result.Message, "must equal spec.podRef.name") {
+		t.Errorf("denial should explain the name rule, got %q", resp.Result.Message)
+	}
+}
+
+func TestValidateCocoonHibernationRejectsTerminatingPredecessor(t *testing.T) {
 	now := metav1.Now()
-	srv := newHibernationServer(t, hibernation("existing", "pod-a", &now))
-	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "new", "pod-a"))
-	if !resp.Allowed {
-		t.Errorf("deleting predecessor should admit the new CR, got %q", resp.Result.Message)
+	srv := newHibernationServer(t, hibernation("legacy-name", "pod-a", &now))
+	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "pod-a", "pod-a"))
+	if resp.Allowed {
+		t.Fatalf("terminating predecessor still owns cleanup; successor should be denied")
+	}
+	if !strings.Contains(resp.Result.Message, "terminating") {
+		t.Errorf("denial should say the predecessor is terminating, got %q", resp.Result.Message)
 	}
 }
 
 func TestValidateCocoonHibernationAllowsDistinctPods(t *testing.T) {
-	srv := newHibernationServer(t, hibernation("existing", "pod-a", nil))
-	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "new", "pod-b"))
+	srv := newHibernationServer(t, hibernation("legacy-name", "pod-a", nil))
+	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "pod-b", "pod-b"))
 	if !resp.Allowed {
 		t.Errorf("distinct pods should both be admitted, got %q", resp.Result.Message)
 	}
 }
 
 func TestValidateCocoonHibernationSkipsNonCreate(t *testing.T) {
-	srv := newHibernationServer(t, hibernation("existing", "pod-a", nil))
-	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Update, "existing", "pod-a"))
+	srv := newHibernationServer(t, hibernation("legacy-name", "pod-a", nil))
+	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Update, "legacy-name", "pod-a"))
 	if !resp.Allowed {
 		t.Errorf("non-CREATE operations pass through, got %q", resp.Result.Message)
 	}
@@ -56,7 +70,7 @@ func TestValidateCocoonHibernationFailsClosedOnListError(t *testing.T) {
 	srv.dyn.(*dynamicfake.FakeDynamicClient).PrependReactor("list", "cocoonhibernations", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, fmt.Errorf("apiserver unavailable")
 	})
-	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "new", "pod-a"))
+	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "pod-a", "pod-a"))
 	if resp.Allowed {
 		t.Errorf("list error should fail closed (deny)")
 	}
