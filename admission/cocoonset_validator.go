@@ -14,6 +14,7 @@ import (
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
 	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
+	"github.com/cocoonstack/cocoon-common/ociutil"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
@@ -72,6 +73,9 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	if msg := firecrackerModeError("spec.agent", cs.Spec.Agent.Backend, string(cs.Spec.Agent.Mode.Default())); msg != "" {
 		errs = append(errs, msg)
 	}
+	if msg := cloneImageError("spec.agent", string(cs.Spec.Agent.Mode.Default()), cs.Spec.Agent.Image); msg != "" {
+		errs = append(errs, msg)
+	}
 
 	seen := map[string]struct{}{}
 	agentBackend := cs.Spec.Agent.Backend.Default()
@@ -112,14 +116,17 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			if err := validateConnType(path, tb.ConnType); err != "" {
 				errs = append(errs, err)
 			}
-		} else {
-			errs = append(errs, validateVMOptions(path, tb.VMOptions, tb.Image)...)
-			if tb.Backend.Default() != agentBackend {
-				errs = append(errs, fmt.Sprintf("%s.backend %q must match spec.agent.backend %q", path, tb.Backend.Default(), agentBackend))
-			}
-			if msg := firecrackerModeError(path, tb.Backend, string(tb.Mode.Default())); msg != "" {
-				errs = append(errs, msg)
-			}
+			continue
+		}
+		errs = append(errs, validateVMOptions(path, tb.VMOptions, tb.Image)...)
+		if tb.Backend.Default() != agentBackend {
+			errs = append(errs, fmt.Sprintf("%s.backend %q must match spec.agent.backend %q", path, tb.Backend.Default(), agentBackend))
+		}
+		if msg := firecrackerModeError(path, tb.Backend, string(tb.Mode.Default())); msg != "" {
+			errs = append(errs, msg)
+		}
+		if msg := cloneImageError(path, string(tb.Mode.Default()), tb.Image); msg != "" {
+			errs = append(errs, msg)
 		}
 	}
 
@@ -130,7 +137,6 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	return errs
 }
 
-// specEqual reports whether two CocoonSets have identical specs.
 func specEqual(a, b *cocoonv1.CocoonSet) bool {
 	return equality.Semantic.DeepEqual(a.Spec, b.Spec)
 }
@@ -171,6 +177,17 @@ func validateConnType(path string, ct cocoonv1.ConnType) string {
 		return ""
 	}
 	return fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, ct)
+}
+
+// cloneImageError rejects clone-mode images ParseRef cannot split (registry
+// ports, digests): the snapshot pull path joins repo[:tag] under a fixed
+// registry base with no external-ref fallback. mode accepts AgentMode or
+// ToolboxMode strings.
+func cloneImageError(path, mode, image string) string {
+	if mode != string(cocoonv1.AgentModeClone) || image == "" || ociutil.IsRelativeRef(image) {
+		return ""
+	}
+	return fmt.Sprintf("%s.image %q must be repo[:tag] when mode is clone (no registry port or digest)", path, image)
 }
 
 // firecrackerModeError rejects firecracker paired with mode != run: FC clone

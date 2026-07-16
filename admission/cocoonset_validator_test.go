@@ -47,6 +47,36 @@ func TestValidateCocoonSetSpec(t *testing.T) {
 			wantContains: []string{"agent.mode"},
 		},
 		{
+			name: "rejects clone-mode digest image",
+			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+				Agent: cocoonv1.AgentSpec{Image: "ubuntu@sha256:deadbeef"},
+			}},
+			wantContains: []string{"spec.agent.image", "must be repo[:tag]"},
+		},
+		{
+			name: "rejects clone-mode registry-port image",
+			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+				Agent: cocoonv1.AgentSpec{Image: "registry:5000/ubuntu:24.04"},
+			}},
+			wantContains: []string{"spec.agent.image", "must be repo[:tag]"},
+		},
+		{
+			name: "accepts run-mode digest image",
+			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+				Agent: cocoonv1.AgentSpec{Image: "ubuntu@sha256:deadbeef", Mode: cocoonv1.AgentModeRun},
+			}},
+		},
+		{
+			name: "rejects clone-mode toolbox registry-port image",
+			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+				Agent: cocoonv1.AgentSpec{Image: "x"},
+				Toolboxes: []cocoonv1.ToolboxSpec{
+					{Name: "tb", Mode: cocoonv1.ToolboxModeClone, Image: "registry:5000/tools:v1"},
+				},
+			}},
+			wantContains: []string{"spec.toolboxes[0].image", "must be repo[:tag]"},
+		},
+		{
 			name: "rejects duplicate toolbox names",
 			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
 				Agent: cocoonv1.AgentSpec{Image: "x"},
