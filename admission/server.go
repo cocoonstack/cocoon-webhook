@@ -5,10 +5,12 @@ package admission
 import (
 	"net/http"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
 	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
+	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
 // Server is the admission webhook HTTP server that handles mutate and validate requests.
@@ -27,10 +29,10 @@ func NewServer(client kubernetes.Interface, dyn dynamic.Interface, podCreators [
 // Routes returns the HTTP handler with all admission webhook routes registered.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/mutate", s.handleMutate)
-	mux.HandleFunc("/validate", s.handleValidate)
-	mux.HandleFunc("/validate-cocoonset", s.handleValidateCocoonSet)
-	mux.HandleFunc("/validate-cocoonhibernation", s.handleValidateCocoonHibernation)
+	mux.HandleFunc("/mutate", admit(s.mutatePod))
+	mux.HandleFunc("/validate", admit(s.validateWorkload))
+	mux.HandleFunc("/validate-cocoonset", admit(s.validateCocoonSet))
+	mux.HandleFunc("/validate-cocoonhibernation", admit(s.validateCocoonHibernation))
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	return mux
@@ -46,18 +48,18 @@ func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ready"))
 }
 
-func (s *Server) handleMutate(w http.ResponseWriter, r *http.Request) {
-	commonadmission.Serve(w, r, 0, s.mutatePod)
+func admit(handler commonadmission.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { commonadmission.Serve(w, r, 0, handler) }
 }
 
-func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
-	commonadmission.Serve(w, r, 0, s.validateWorkload)
+// recordAllow and recordDeny pair the admission counter with the response so
+// every handler exit records exactly one sample.
+func recordAllow(handler, result, reason string) *admissionv1.AdmissionResponse {
+	metrics.RecordAdmission(handler, result, reason)
+	return commonadmission.Allow()
 }
 
-func (s *Server) handleValidateCocoonSet(w http.ResponseWriter, r *http.Request) {
-	commonadmission.Serve(w, r, 0, s.validateCocoonSet)
-}
-
-func (s *Server) handleValidateCocoonHibernation(w http.ResponseWriter, r *http.Request) {
-	commonadmission.Serve(w, r, 0, s.validateCocoonHibernation)
+func recordDeny(handler, result, reason, msg string) *admissionv1.AdmissionResponse {
+	metrics.RecordAdmission(handler, result, reason)
+	return commonadmission.Deny(msg)
 }

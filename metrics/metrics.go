@@ -2,10 +2,7 @@
 package metrics
 
 import (
-	"net/http"
-
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -50,16 +47,6 @@ var AdmissionTotal = prometheus.NewCounterVec(
 	},
 	[]string{labelHandler, labelResult, labelReason},
 )
-
-// Register registers all webhook metrics with the given registerer.
-func Register(reg prometheus.Registerer) {
-	reg.MustRegister(AdmissionTotal)
-}
-
-// Handler returns the Prometheus metrics HTTP handler.
-func Handler() http.Handler {
-	return promhttp.Handler()
-}
 
 // RecordAdmission increments the admission counter. reason qualifies a
 // skipped/error result and is "" for a real allow/deny.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/projecteru2/core/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	commonhttpx "github.com/cocoonstack/cocoon-common/httpx"
 	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
@@ -40,7 +41,7 @@ func main() {
 		logger.Fatalf(ctx, err, "setup log")
 	}
 
-	metrics.Register(prometheus.DefaultRegisterer)
+	prometheus.MustRegister(metrics.AdmissionTotal)
 
 	certFile := commonk8s.EnvOrDefault("TLS_CERT", defaultCertFile)
 	keyFile := commonk8s.EnvOrDefault("TLS_KEY", defaultKeyFile)
@@ -69,7 +70,7 @@ func main() {
 	}
 
 	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", metrics.Handler())
+	metricsMux.Handle("/metrics", promhttp.Handler())
 	metricsServer := commonhttpx.NewServer(metricsListen, metricsMux)
 
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)

@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
-	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
 	"github.com/cocoonstack/cocoon-common/ociutil"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
@@ -24,15 +23,13 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 	req := review.Request
 
 	if req.Operation != admissionv1.Create && req.Operation != admissionv1.Update {
-		metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultSkipped, metrics.ReasonOperation)
-		return commonadmission.Allow()
+		return recordAllow(metrics.HandlerValidateCocoonSet, metrics.ResultSkipped, metrics.ReasonOperation)
 	}
 
 	var cs cocoonv1.CocoonSet
 	if err := json.Unmarshal(req.Object.Raw, &cs); err != nil {
 		logger.Errorf(ctx, err, "decode cocoonset %s/%s", req.Namespace, req.Name)
-		metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultError, metrics.ReasonDecode)
-		return commonadmission.Deny(fmt.Sprintf("decode CocoonSet: %v", err))
+		return recordDeny(metrics.HandlerValidateCocoonSet, metrics.ResultError, metrics.ReasonDecode, fmt.Sprintf("decode CocoonSet: %v", err))
 	}
 
 	// Allow spec-unchanged UPDATEs (finalizer/metadata patches): an invalid
@@ -42,19 +39,16 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 		if err := json.Unmarshal(req.OldObject.Raw, &old); err != nil {
 			logger.Warnf(ctx, "decode old cocoonset %s/%s: %v", req.Namespace, req.Name, err)
 		} else if specEqual(&cs, &old) {
-			metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultSkipped, metrics.ReasonNoChange)
-			return commonadmission.Allow()
+			return recordAllow(metrics.HandlerValidateCocoonSet, metrics.ResultSkipped, metrics.ReasonNoChange)
 		}
 	}
 
 	if errs := validateCocoonSetSpec(&cs); len(errs) > 0 {
 		msg := "cocoon-webhook: invalid CocoonSet spec: " + strings.Join(errs, "; ")
 		logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
-		metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultDeny, "")
-		return commonadmission.Deny(msg)
+		return recordDeny(metrics.HandlerValidateCocoonSet, metrics.ResultDeny, "", msg)
 	}
-	metrics.RecordAdmission(metrics.HandlerValidateCocoonSet, metrics.ResultAllow, "")
-	return commonadmission.Allow()
+	return recordAllow(metrics.HandlerValidateCocoonSet, metrics.ResultAllow, "")
 }
 
 func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {

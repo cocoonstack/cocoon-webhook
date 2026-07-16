@@ -11,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	commonadmission "github.com/cocoonstack/cocoon-common/k8s/admission"
 	"github.com/cocoonstack/cocoon-common/meta"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
@@ -34,37 +33,31 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	req := review.Request
 
 	if req.Kind.Kind != "Pod" {
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonKind)
-		return commonadmission.Allow()
+		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonKind)
 	}
 
 	var pod podShape
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 		// Bad client input — apiserver will reject it anyway, so fail open.
 		log.WithFunc("mutatePod").Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonDecode)
-		return commonadmission.Allow()
+		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonDecode)
 	}
 
 	if !meta.HasCocoonTolerationKey(pod.Spec.Tolerations) {
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
-		return commonadmission.Allow()
+		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 	}
 
 	if !meta.IsOwnedByCocoonSet(pod.Metadata.OwnerReferences) {
 		log.WithFunc("mutatePod").Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultDeny, "")
-		return commonadmission.Deny("cocoon pods must be managed by a CocoonSet")
+		return recordDeny(metrics.HandlerMutate, metrics.ResultDeny, "", "cocoon pods must be managed by a CocoonSet")
 	}
 
 	// Owner references are client-settable and unverified by the apiserver;
 	// the authenticated requester is the only unforgeable signal.
 	if !slices.Contains(s.podCreators, req.UserInfo.Username) {
 		log.WithFunc("mutatePod").Warnf(ctx, "deny cocoon pod %s/%s: creator %q is not an allowed controller", req.Namespace, req.Name, req.UserInfo.Username)
-		metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultDeny, "")
-		return commonadmission.Deny(fmt.Sprintf("cocoon pods must be created by the CocoonSet controller, got user %q", req.UserInfo.Username))
+		return recordDeny(metrics.HandlerMutate, metrics.ResultDeny, "", fmt.Sprintf("cocoon pods must be created by the CocoonSet controller, got user %q", req.UserInfo.Username))
 	}
 
-	metrics.RecordAdmission(metrics.HandlerMutate, metrics.ResultAllow, "")
-	return commonadmission.Allow()
+	return recordAllow(metrics.HandlerMutate, metrics.ResultAllow, "")
 }
