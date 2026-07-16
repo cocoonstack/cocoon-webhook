@@ -79,7 +79,6 @@ func TestReloaderServesStaleOnReloadFailure(t *testing.T) {
 		t.Fatalf("chtimes cert: %v", err)
 	}
 
-	// Reload fails, but GetCertificate must still return the original cert.
 	cert, err := r.GetCertificate(nil)
 	if err != nil {
 		t.Fatalf("GetCertificate: %v", err)

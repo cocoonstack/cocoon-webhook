@@ -255,7 +255,6 @@ func TestValidateCocoonSetSpec(t *testing.T) {
 					Mode:       cocoonv1.ToolboxModeStatic,
 					StaticIP:   "10.1.2.3",
 					StaticVMID: "vm-aaa",
-					// No backend / image — static toolboxes don't run a hypervisor.
 				}},
 			}},
 		},
@@ -325,14 +324,12 @@ func TestSpecEqualDetectsMetadataOnlyChange(t *testing.T) {
 		},
 	}
 
-	// Same spec, different metadata → specEqual=true
 	withFinalizer := base.DeepCopy()
 	withFinalizer.Finalizers = []string{"cocoonset.cocoonstack.io/finalizer"}
 	if !specEqual(&base, withFinalizer) {
 		t.Errorf("specEqual should return true when only metadata differs")
 	}
 
-	// Different spec → specEqual=false
 	diffSpec := base.DeepCopy()
 	diffSpec.Spec.Agent.Mode = cocoonv1.AgentModeRun
 	if specEqual(&base, diffSpec) {

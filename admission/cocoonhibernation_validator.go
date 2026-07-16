@@ -17,13 +17,11 @@ import (
 
 var cocoonHibernationGVR = cocoonv1.GroupVersion.WithResource("cocoonhibernations")
 
-// validateCocoonHibernation rejects a CREATE that would give a pod a second
-// CocoonHibernation. metadata.name must equal spec.podRef.name so racing
-// duplicate CREATEs collide on apiserver name uniqueness — a LIST check alone
-// is a TOCTOU race. The list catches pre-rule names, terminating ones
-// included: a predecessor's pending cleanup deletes the pod's hibernate
-// snapshot out from under a successor. CREATE is the only gate needed:
-// retargets are blocked by the CRD's CEL rule.
+// validateCocoonHibernation gates CREATE: metadata.name must equal
+// spec.podRef.name so racing duplicates collide on apiserver name uniqueness
+// (a LIST check alone is a TOCTOU race); the list still catches pre-rule
+// names, terminating ones included, whose pending cleanup deletes the pod's
+// hibernate snapshot. Retargets are blocked by the CRD's CEL rule.
 func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateCocoonHibernation")
 	req := review.Request

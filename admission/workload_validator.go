@@ -90,8 +90,7 @@ func (s *Server) fetchParentTolerations(ctx context.Context, req *admissionv1.Ad
 }
 
 // workloadShape is the narrow slice Deployment and StatefulSet share and the
-// only fields this gate reads: every workload UPDATE cluster-wide pays this
-// decode, so skip the rest of the object.
+// only fields this gate reads — every workload UPDATE cluster-wide pays this decode.
 type workloadShape struct {
 	Spec struct {
 		Replicas *int32 `json:"replicas"`
