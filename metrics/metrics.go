@@ -10,9 +10,10 @@ import (
 
 const (
 	// Handler label values, one per admission endpoint.
-	HandlerMutate            = "mutate"
-	HandlerValidate          = "validate"
-	HandlerValidateCocoonSet = "validate_cocoonset"
+	HandlerMutate              = "mutate"
+	HandlerValidate            = "validate"
+	HandlerValidateCocoonSet   = "validate_cocoonset"
+	HandlerValidateHibernation = "validate_cocoonhibernation"
 
 	// Result label values. skipped marks a request passed through without
 	// adjudicating (incl. fail-open decode); fail-closed failures are error.
@@ -29,6 +30,7 @@ const (
 	ReasonNotCocoon   = "not_cocoon"
 	ReasonNoChange    = "no_change"
 	ReasonParentFetch = "parent_fetch"
+	ReasonList        = "list"
 
 	metricNamespace = "cocoon"
 	metricSubsystem = "webhook"

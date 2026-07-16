@@ -50,12 +50,12 @@ func main() {
 		logger.Fatalf(ctx, err, "load TLS keypair")
 	}
 
-	clientset, err := commonk8s.NewClientset()
+	clientset, dyn, err := commonk8s.NewClientsetAndDynamic()
 	if err != nil {
 		logger.Fatalf(ctx, err, "build clientset")
 	}
 
-	webhookServer := commonhttpx.NewServer(listen, admission.NewServer(clientset).Routes())
+	webhookServer := commonhttpx.NewServer(listen, admission.NewServer(clientset, dyn).Routes())
 	webhookServer.TLSConfig = &tls.Config{
 		GetCertificate: reloader.GetCertificate,
 		MinVersion:     tls.VersionTLS12,

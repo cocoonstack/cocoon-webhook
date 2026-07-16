@@ -263,6 +263,27 @@ func TestValidateCocoonSetSpec(t *testing.T) {
 	}
 }
 
+func TestValidateCocoonSetSpecReportsToolboxConnTypeOnce(t *testing.T) {
+	cs := &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+		Agent: cocoonv1.AgentSpec{Image: "x"},
+		Toolboxes: []cocoonv1.ToolboxSpec{{
+			Name:      "tb",
+			Image:     "y",
+			VMOptions: cocoonv1.VMOptions{ConnType: "telnet"},
+		}},
+	}}
+	errs := validateCocoonSetSpec(cs)
+	var connTypeErrs []string
+	for _, e := range errs {
+		if strings.Contains(e, "connType must be ssh") {
+			connTypeErrs = append(connTypeErrs, e)
+		}
+	}
+	if len(connTypeErrs) != 1 {
+		t.Errorf("want exactly one connType error, got %d: %v", len(connTypeErrs), errs)
+	}
+}
+
 func TestSpecEqualDetectsMetadataOnlyChange(t *testing.T) {
 	base := cocoonv1.CocoonSet{
 		Spec: cocoonv1.CocoonSetSpec{

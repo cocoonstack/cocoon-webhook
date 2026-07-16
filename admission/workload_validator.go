@@ -41,9 +41,8 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 	}
 }
 
-// validateScaleSubresource fetches the parent workload to check tolerations.
-// Fails closed on apiserver errors; fails open on malformed Scale payloads
-// (apiserver controls that shape).
+// validateScaleSubresource fetches the parent workload to check tolerations:
+// fail-closed on apiserver errors, fail-open on malformed Scale payloads.
 func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateScaleSubresource")
 
@@ -127,9 +126,8 @@ func validateStatefulSetScaleDown(ctx context.Context, req *admissionv1.Admissio
 	return checkScaleDown(ctx, req, replicasOrDefault(oldObj.Spec.Replicas), replicasOrDefault(newObj.Spec.Replicas))
 }
 
-// decodeUpdatePair decodes req.OldObject and req.Object into the provided
-// pointers. Returns false and logs a warning on malformed payloads so callers
-// can fail open — apiserver rejects the malformed request anyway.
+// decodeUpdatePair decodes req.OldObject and req.Object, returning false on
+// malformed payloads so callers fail open (apiserver rejects those anyway).
 func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
 	logger := log.WithFunc(fn)
 	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {

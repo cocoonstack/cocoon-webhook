@@ -90,7 +90,7 @@ func TestMutatePodRecordsExactlyOneSample(t *testing.T) {
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	client := fake.NewSimpleClientset()
-	return NewServer(client)
+	return NewServer(client, nil)
 }
 
 // collectAdmission reads metrics.AdmissionTotal off the collector directly —

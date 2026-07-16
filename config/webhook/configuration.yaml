@@ -87,3 +87,22 @@ webhooks:
         name: cocoon-webhook
         path: /validate-cocoonset
         port: 443
+  # CREATE-only: one live CocoonHibernation per pod. Retargeting an existing
+  # CR is rejected by the CRD's CEL rule on spec.podRef, not by this webhook.
+  - name: cocoonhibernations.validate.cocoonstack.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    timeoutSeconds: 5
+    rules:
+      - apiGroups: ["cocoonset.cocoonstack.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["cocoonhibernations"]
+        scope: Namespaced
+    clientConfig:
+      service:
+        namespace: cocoon-system
+        name: cocoon-webhook
+        path: /validate-cocoonhibernation
+        port: 443

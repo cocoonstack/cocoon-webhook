@@ -13,11 +13,9 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-// mutatePod emits no patches — it only Allows or Denies. It keeps the mutate
-// name and MutatingWebhookConfiguration registration because mutating webhooks
-// run before validating ones, so a bare-pod Deny here short-circuits the chain
-// instead of running a full mutation pass on a doomed request.
-// config/webhook/configuration.yaml carries the same note.
+// mutatePod emits no patches, only Allow/Deny: it stays a mutating webhook
+// because those run first, so a bare-pod Deny short-circuits the chain
+// (config/webhook/configuration.yaml carries the same note).
 func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("mutatePod")
 	req := review.Request

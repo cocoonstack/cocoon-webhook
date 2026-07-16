@@ -34,10 +34,8 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 		return commonadmission.Deny(fmt.Sprintf("decode CocoonSet: %v", err))
 	}
 
-	// On UPDATE, skip spec validation when only metadata changed (e.g.
-	// finalizer patches during deletion). Without this, an invalid CR
-	// that slipped past an older webhook becomes undeletable because the
-	// operator's finalizer-removal patch is denied.
+	// Allow spec-unchanged UPDATEs (finalizer/metadata patches): an invalid
+	// CR that predates stricter validation must stay deletable.
 	if req.Operation == admissionv1.Update && req.OldObject.Raw != nil {
 		var old cocoonv1.CocoonSet
 		if err := json.Unmarshal(req.OldObject.Raw, &old); err != nil {
@@ -108,15 +106,13 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			errs = append(errs, path+".image is required when mode is run or clone")
 		}
 
-		// ConnType applies to every toolbox — clients still reach static
-		// toolboxes via SSH/RDP/VNC/ADB, so the enum must be validated even
-		// when the rest of the VM options are skipped.
-		if err := validateConnType(path, tb.ConnType); err != "" {
-			errs = append(errs, err)
-		}
-
-		// Static toolboxes run no hypervisor locally; skip backend/image consistency checks.
-		if tb.Mode != cocoonv1.ToolboxModeStatic {
+		// Static toolboxes run no hypervisor locally: skip backend/image checks
+		// but keep ConnType — clients still reach them via SSH/RDP/VNC/ADB.
+		if tb.Mode == cocoonv1.ToolboxModeStatic {
+			if err := validateConnType(path, tb.ConnType); err != "" {
+				errs = append(errs, err)
+			}
+		} else {
 			errs = append(errs, validateVMOptions(path, tb.VMOptions, tb.Image)...)
 			if tb.Backend.Default() != agentBackend {
 				errs = append(errs, fmt.Sprintf("%s.backend %q must match spec.agent.backend %q", path, tb.Backend.Default(), agentBackend))
@@ -139,9 +135,8 @@ func specEqual(a, b *cocoonv1.CocoonSet) bool {
 	return equality.Semantic.DeepEqual(a.Spec, b.Spec)
 }
 
-// validateVMOptions validates shared VM knobs (OS / ConnType / Backend) plus
-// firecracker-specific image constraints. path is the JSON path prefix used
-// when reporting errors.
+// validateVMOptions validates shared VM knobs plus firecracker image
+// constraints; path is the JSON path prefix for reported errors.
 func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []string {
 	var errs []string
 
@@ -155,9 +150,8 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 		errs = append(errs, fmt.Sprintf("%s.backend must be cloud-hypervisor or firecracker, got %q", path, opts.Backend))
 	}
 
-	// Firecracker uses direct kernel boot from OCI layers — it cannot boot
-	// Windows, and cannot consume cloudimg URLs (those are full qcow2 images
-	// that require UEFI/BIOS firmware).
+	// Firecracker direct-boots kernels from OCI layers: no Windows, no
+	// cloudimg qcow2 URLs (those need UEFI/BIOS firmware).
 	if opts.Backend.Default() == cocoonv1.BackendFirecracker {
 		if opts.OS.Default() == cocoonv1.OSWindows {
 			errs = append(errs, fmt.Sprintf("%s: firecracker does not support Windows guests", path))
@@ -171,8 +165,7 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 }
 
 // validateConnType returns the error message for an invalid ConnType, empty
-// when unset or valid. Called outside validateVMOptions so static toolboxes
-// can still validate the field.
+// when unset or valid; standalone so static toolboxes can validate it alone.
 func validateConnType(path string, ct cocoonv1.ConnType) string {
 	if ct == "" || ct.IsValid() {
 		return ""
@@ -180,13 +173,9 @@ func validateConnType(path string, ct cocoonv1.ConnType) string {
 	return fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, ct)
 }
 
-// firecrackerModeError returns the error message when a firecracker backend
-// is paired with mode != run. Firecracker restores the memory snapshot on
-// clone, freezing guest network state (MAC + IP) — cross-node clones land
-// with an unreachable IP from the source's DHCP pool. CH hot-swaps the NIC
-// to work around this; FC has no equivalent. The mode arg accepts either
-// AgentMode or ToolboxMode as a string since both enums share the "run"
-// literal.
+// firecrackerModeError rejects firecracker paired with mode != run: FC clone
+// restores freeze guest MAC+IP, landing clones on an unreachable DHCP lease
+// (CH hot-swaps the NIC instead). mode accepts AgentMode or ToolboxMode strings.
 func firecrackerModeError(path string, backend cocoonv1.Backend, mode string) string {
 	if backend.Default() != cocoonv1.BackendFirecracker {
 		return ""
