@@ -9,6 +9,8 @@ StatefulSets, a validating webhook that enforces CocoonSet cross-field
 business rules the CRD's OpenAPI schema can't express, and a validating
 webhook that pins each pod to at most one live CocoonHibernation.
 
+**Documentation: [cocoonstack.github.io/cocoon-webhook](https://cocoonstack.github.io/cocoon-webhook/)** (source in [`docs/`](docs/)).
+
 ## Documentation
 
 - [Overview](docs/overview.md) — the admission endpoints and what each one does

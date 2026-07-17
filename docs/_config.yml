@@ -1,3 +1,3 @@
 title: cocoon-webhook
-description: Admission webhook for cocoon sticky scheduling and CocoonSet validation
+description: Admission webhook for cocoon sticky scheduling, CocoonSet validation, and CocoonHibernation uniqueness
 theme: jekyll-theme-primer
