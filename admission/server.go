@@ -38,14 +38,13 @@ func (s *Server) Routes() http.Handler {
 	return mux
 }
 
-func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
-}
+func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) { writeOK(w, "ok") }
 
-func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) { writeOK(w, "ready") }
+
+func writeOK(w http.ResponseWriter, body string) {
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ready"))
+	_, _ = w.Write([]byte(body))
 }
 
 func admit(handler commonadmission.Handler) http.HandlerFunc {
