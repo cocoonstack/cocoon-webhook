@@ -6,7 +6,6 @@ import (
 )
 
 const (
-	// Handler label values, one per admission endpoint.
 	HandlerMutate              = "mutate"
 	HandlerValidate            = "validate"
 	HandlerValidateCocoonSet   = "validate_cocoonset"
