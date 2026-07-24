@@ -21,6 +21,7 @@ validation cannot express:
 - `spec.toolboxes[*]` static-mode entries must declare a valid `connType` (`ssh` / `rdp` / `vnc` / `adb`)
 - clone-mode images (`spec.agent.image`, `spec.toolboxes[*].image`) must be `repo[:tag]` — registry ports and digests are rejected, because the snapshot pull path resolves images under the org registry base and has no external-ref fallback
 - `spec.snapshotPolicy ∈ {always, main-only, never}`
+- `spec.hibernatePolicy ∈ {retain, release}`
 
 These rules run on CocoonSet CREATE and UPDATE, behind the
 `POST /validate-cocoonset` endpoint — see [Overview](overview.md) for

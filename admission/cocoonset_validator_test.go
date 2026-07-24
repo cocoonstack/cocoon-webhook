@@ -137,6 +137,14 @@ func TestValidateCocoonSetSpec(t *testing.T) {
 			wantContains: []string{"snapshotPolicy"},
 		},
 		{
+			name: "rejects bad hibernate policy",
+			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+				Agent:           cocoonv1.AgentSpec{Image: "x"},
+				HibernatePolicy: "relase",
+			}},
+			wantContains: []string{"hibernatePolicy"},
+		},
+		{
 			name: "accepts resource quantity for storage",
 			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
 				Agent: cocoonv1.AgentSpec{Image: "x", VMOptions: cocoonv1.VMOptions{Storage: &storage100Gi}},

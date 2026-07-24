@@ -80,7 +80,7 @@ func main() {
 		version.VERSION, version.REVISION, version.BUILTAT, listen, metricsListen)
 
 	specs := []commonhttpx.ServerSpec{
-		commonhttpx.HTTPSServerSpec(webhookServer, "", ""),
+		commonhttpx.HTTPSServerSpec(webhookServer),
 		commonhttpx.HTTPServerSpec(metricsServer),
 	}
 	if err := commonhttpx.Run(ctx, shutdownTimeout, specs...); err != nil {
