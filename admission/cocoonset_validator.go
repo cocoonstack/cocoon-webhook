@@ -129,6 +129,9 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	if cs.Spec.SnapshotPolicy != "" && !cs.Spec.SnapshotPolicy.IsValid() {
 		errs = append(errs, fmt.Sprintf("spec.snapshotPolicy must be always, main-only, or never, got %q", cs.Spec.SnapshotPolicy))
 	}
+	if cs.Spec.HibernatePolicy != "" && !cs.Spec.HibernatePolicy.IsValid() {
+		errs = append(errs, fmt.Sprintf("spec.hibernatePolicy must be retain or release, got %q", cs.Spec.HibernatePolicy))
+	}
 
 	return errs
 }
