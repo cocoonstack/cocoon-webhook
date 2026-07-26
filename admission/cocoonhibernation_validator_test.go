@@ -49,6 +49,31 @@ func TestValidateCocoonHibernationRejectsTerminatingPredecessor(t *testing.T) {
 	}
 }
 
+func TestValidateCocoonHibernationRejectsInvalidDesire(t *testing.T) {
+	srv := newHibernationServer(t)
+	hib := hibernation("pod-a", "pod-a", nil)
+	hib.Spec.Desire = "Sleep"
+	raw, err := json.Marshal(hib)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	resp := srv.validateCocoonHibernation(t.Context(), &admissionv1.AdmissionReview{
+		Request: &admissionv1.AdmissionRequest{
+			UID:       "uid",
+			Namespace: "ns",
+			Name:      "pod-a",
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: raw},
+		},
+	})
+	if resp.Allowed {
+		t.Fatalf("invalid spec.desire should be denied")
+	}
+	if !strings.Contains(resp.Result.Message, "spec.desire") {
+		t.Errorf("denial should name spec.desire, got %q", resp.Result.Message)
+	}
+}
+
 func TestValidateCocoonHibernationAllowsDistinctPods(t *testing.T) {
 	srv := newHibernationServer(t, hibernation("legacy-name", "pod-a", nil))
 	resp := srv.validateCocoonHibernation(t.Context(), hibernationReview(t, admissionv1.Create, "pod-b", "pod-b"))

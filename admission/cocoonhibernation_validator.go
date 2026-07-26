@@ -35,6 +35,13 @@ func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissio
 		return recordDeny(metrics.HandlerValidateHibernation, metrics.ResultError, metrics.ReasonDecode, fmt.Sprintf("decode CocoonHibernation: %v", err))
 	}
 
+	if !hib.Spec.Desire.IsValid() {
+		msg := fmt.Sprintf("cocoon-webhook: spec.desire must be %s or %s, got %q",
+			cocoonv1.HibernationDesireHibernate, cocoonv1.HibernationDesireWake, hib.Spec.Desire)
+		logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
+		return recordDeny(metrics.HandlerValidateHibernation, metrics.ResultDeny, "", msg)
+	}
+
 	if hib.Name != hib.Spec.PodRef.Name {
 		msg := fmt.Sprintf("cocoon-webhook: metadata.name %q must equal spec.podRef.name %q (one CocoonHibernation per pod, named after it)",
 			hib.Name, hib.Spec.PodRef.Name)
