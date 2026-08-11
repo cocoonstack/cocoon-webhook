@@ -1,4 +1,6 @@
-# CocoonSet validation rules
+# Validation rules
+
+## CocoonSet
 
 The CRD ships with `+kubebuilder` enum / required / default markers, but
 the webhook adds the cross-field business rules that OpenAPI schema
@@ -26,3 +28,18 @@ validation cannot express:
 These rules run on CocoonSet CREATE and UPDATE, behind the
 `POST /validate-cocoonset` endpoint — see [Overview](overview.md) for
 where that fits among the webhook's other endpoints.
+
+## CocoonHibernation
+
+`POST /validate-cocoonhibernation` gates CREATE only (an UPDATE is skipped —
+retargeting `spec.podRef` is already blocked by the CRD's CEL rule):
+
+- `spec.desire ∈ {hibernate, wake}`
+- `metadata.name` must equal `spec.podRef.name`, so two racing CREATEs for one
+  pod collide on apiserver name uniqueness instead of both being admitted
+- the pod must not already have a CocoonHibernation — including one that is
+  still terminating, whose pending finalizer will delete that pod's hibernate
+  snapshot. Flip `spec.desire` on the existing CR instead of creating a second
+- the duplicate check fails closed: if the LIST cannot be served, the CREATE is
+  denied rather than risk the non-converging hibernate/wake flip-flop that two
+  CRs over one VM produce

@@ -14,7 +14,7 @@ webhook that pins each pod to at most one live CocoonHibernation.
 ## Documentation
 
 - [Overview](docs/overview.md) — the admission endpoints and what each one does
-- [CocoonSet validation rules](docs/validation.md) — the cross-field business rules enforced on CocoonSet CREATE/UPDATE
+- [Validation rules](docs/validation.md) — the cross-field business rules enforced on CocoonSet CREATE/UPDATE and on CocoonHibernation CREATE
 - [Configuration](docs/configuration.md) — every environment variable
 - [Installation](docs/installation.md) — the `kubectl apply -k` path and building from source
 
