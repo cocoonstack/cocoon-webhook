@@ -148,7 +148,7 @@ func TestServerValidateWorkloadScaleSubresourceAPIErrorDenied(t *testing.T) {
 
 func TestValidateScaleDownBlocksWhenOldHasToleration(t *testing.T) {
 	old := newDeployment(5, true)
-	updated := newDeployment(2, false) // toleration removed in same patch
+	updated := newDeployment(2, false)
 	resp := validateWorkloadScaleDown(t.Context(), buildUpdateReview(t, "Deployment", old, updated).Request)
 	if resp.Allowed {
 		t.Errorf("scale-down should be blocked when old object has cocoon toleration")
