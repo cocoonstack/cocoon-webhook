@@ -155,8 +155,6 @@ func TestValidateScaleDownBlocksWhenOldHasToleration(t *testing.T) {
 	}
 }
 
-// TestValidateWorkloadRecordsExactlyOneSampleOnCreate pins one-sample-per-request
-// on a validator early-return path: a non-Update op is skipped/operation.
 func TestValidateWorkloadRecordsExactlyOneSampleOnCreate(t *testing.T) {
 	metrics.AdmissionTotal.Reset()
 	srv := newTestServer(t)

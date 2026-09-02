@@ -146,7 +146,7 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	var errs []string
 
 	if opts.OS != "" && !opts.OS.IsValid() {
-		errs = append(errs, fmt.Sprintf("%s.os must be linux, windows, or android, got %q", path, opts.OS))
+		errs = append(errs, fmt.Sprintf("%s.os must be linux, windows, android, or macos, got %q", path, opts.OS))
 	}
 	if msg := validateConnType(path, opts.ConnType); msg != "" {
 		errs = append(errs, msg)
@@ -178,10 +178,7 @@ func validateConnType(path string, ct cocoonv1.ConnType) string {
 	return fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, ct)
 }
 
-// cloneImageError rejects clone-mode images ParseRef cannot split (registry
-// ports, digests): the snapshot pull path joins repo[:tag] under a fixed
-// registry base with no external-ref fallback. mode accepts AgentMode or
-// ToolboxMode strings.
+// cloneImageError rejects clone-mode images ParseRef cannot split: the snapshot pull joins repo[:tag] under a fixed registry base.
 func cloneImageError(path, mode, image string) string {
 	if mode != string(cocoonv1.AgentModeClone) || image == "" || ociutil.IsRelativeRef(image) {
 		return ""
@@ -189,9 +186,7 @@ func cloneImageError(path, mode, image string) string {
 	return fmt.Sprintf("%s.image %q must be repo[:tag] when mode is clone (no registry port or digest)", path, image)
 }
 
-// firecrackerModeError rejects firecracker paired with mode != run: FC clone
-// restores freeze guest MAC+IP, landing clones on an unreachable DHCP lease
-// (CH hot-swaps the NIC instead). mode accepts AgentMode or ToolboxMode strings.
+// firecrackerModeError rejects firecracker with mode != run: an FC restore freezes the guest MAC+IP, so clones land on a dead lease.
 func firecrackerModeError(path string, backend cocoonv1.Backend, mode string) string {
 	if backend.Default() != cocoonv1.BackendFirecracker {
 		return ""

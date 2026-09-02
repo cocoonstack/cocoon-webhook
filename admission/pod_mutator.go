@@ -26,9 +26,7 @@ type podShape struct {
 	} `json:"spec"`
 }
 
-// mutatePod emits no patches, only Allow/Deny: it stays a mutating webhook
-// because those run first, so a bare-pod Deny short-circuits the chain
-// (config/webhook/configuration.yaml carries the same note).
+// mutatePod only allows or denies; it stays a mutating webhook because those run first and a Deny short-circuits the chain.
 func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	req := review.Request
 
