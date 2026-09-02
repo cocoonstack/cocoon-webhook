@@ -49,6 +49,11 @@ webhooks:
     sideEffects: None
     failurePolicy: Fail
     timeoutSeconds: 5
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: ["kube-system", "kube-node-lease", "kube-public", "cocoon-system", "cert-manager"]
     rules:
       # `deployments` / `statefulsets` covers `kubectl edit`, `kubectl patch`,
       # and direct PUT/PATCH on the parent. `kubectl scale --replicas=N`
