@@ -14,13 +14,9 @@ import (
 	"github.com/projecteru2/core/log"
 )
 
-// Reloader caches a TLS keypair and re-reads it when either file's mtime
-// differs from the load-time snapshot. Reload errors fall through to the
-// stale cert rather than drop in-flight handshakes.
-//
-// ctx is stashed for logging only: tls.Config.GetCertificate takes no ctx.
+// Reloader re-reads the keypair when either file's mtime changes and keeps the stale cert on a reload error.
 type Reloader struct {
-	ctx      context.Context
+	ctx      context.Context // GetCertificate takes no ctx; logging only
 	certFile string
 	keyFile  string
 
@@ -39,9 +35,7 @@ func NewReloader(ctx context.Context, certFile, keyFile string) (*Reloader, erro
 	return r, nil
 }
 
-// GetCertificate is the tls.Config.GetCertificate callback. It stats both
-// files per handshake — cheap at admission rates; concurrent handshakes may
-// each reload during a rotation, tolerated to keep readers on RLock only.
+// GetCertificate stats both files per handshake; concurrent reloads during a rotation are tolerated to keep readers on RLock.
 func (r *Reloader) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if r.mtimeChanged() {
 		if err := r.load(); err != nil {

@@ -96,8 +96,6 @@ func TestMutatePodDeniesBareCocoonPod(t *testing.T) {
 	}
 }
 
-// TestMutatePodRecordsExactlyOneSample pins one-sample-per-request on an
-// early-return path: exactly one series, tagged skipped/not_cocoon.
 func TestMutatePodRecordsExactlyOneSample(t *testing.T) {
 	metrics.AdmissionTotal.Reset()
 	srv := newTestServer(t)
@@ -118,8 +116,6 @@ func newTestServer(t *testing.T) *Server {
 	return NewServer(client, nil, []string{testPodCreator})
 }
 
-// collectAdmission reads metrics.AdmissionTotal off the collector directly —
-// testutil would add a module not in go.mod.
 func collectAdmission(t *testing.T) (series int, total float64) {
 	t.Helper()
 	ch := make(chan prometheus.Metric)

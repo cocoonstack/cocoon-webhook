@@ -14,11 +14,8 @@ func TestValidateCocoonSetSpec(t *testing.T) {
 	storage100Gi := resource.MustParse("100Gi")
 
 	tests := []struct {
-		name string
-		cs   *cocoonv1.CocoonSet
-		// wantContains lists substrings each of which must appear in some
-		// returned error. Empty means the spec must validate cleanly (zero
-		// errors returned).
+		name         string
+		cs           *cocoonv1.CocoonSet
 		wantContains []string
 	}{
 		{
