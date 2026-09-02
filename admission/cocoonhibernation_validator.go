@@ -8,19 +8,15 @@ import (
 	"github.com/projecteru2/core/log"
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
-	commonk8s "github.com/cocoonstack/cocoon-common/k8s"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
 var cocoonHibernationGVR = cocoonv1.GroupVersion.WithResource("cocoonhibernations")
 
-// validateCocoonHibernation gates CREATE: metadata.name must equal
-// spec.podRef.name so racing duplicates collide on apiserver name uniqueness
-// (a LIST check alone is a TOCTOU race); the list still catches pre-rule
-// names, terminating ones included, whose pending cleanup deletes the pod's
-// hibernate snapshot. Retargets are blocked by the CRD's CEL rule.
+// validateCocoonHibernation requires metadata.name == spec.podRef.name so duplicates collide on name uniqueness; the LIST catches pre-rule names.
 func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("validateCocoonHibernation")
 	req := review.Request
@@ -57,19 +53,20 @@ func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissio
 		return recordDeny(metrics.HandlerValidateHibernation, metrics.ResultError, metrics.ReasonList, fmt.Sprintf("cocoon-webhook: cannot verify podRef uniqueness: %v", err))
 	}
 	for i := range existing.Items {
-		other, err := commonk8s.DecodeUnstructured[cocoonv1.CocoonHibernation](&existing.Items[i])
+		other := &existing.Items[i]
+		podName, _, err := unstructured.NestedString(other.Object, "spec", "podRef", "name")
 		if err != nil {
-			logger.Warnf(ctx, "decode existing cocoonhibernation %s/%s: %v", req.Namespace, existing.Items[i].GetName(), err)
+			logger.Warnf(ctx, "decode existing cocoonhibernation %s/%s: %v", req.Namespace, other.GetName(), err)
 			continue
 		}
-		if other.Spec.PodRef.Name != hib.Spec.PodRef.Name {
+		if podName != hib.Spec.PodRef.Name {
 			continue
 		}
 		msg := fmt.Sprintf("cocoon-webhook: pod %q already has a live CocoonHibernation %q; flip its spec.desire instead of creating a second CR",
-			hib.Spec.PodRef.Name, other.Name)
-		if other.DeletionTimestamp != nil {
+			hib.Spec.PodRef.Name, other.GetName())
+		if other.GetDeletionTimestamp() != nil {
 			msg = fmt.Sprintf("cocoon-webhook: pod %q's CocoonHibernation %q is still terminating; retry after its cleanup finishes",
-				hib.Spec.PodRef.Name, other.Name)
+				hib.Spec.PodRef.Name, other.GetName())
 		}
 		logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
 		return recordDeny(metrics.HandlerValidateHibernation, metrics.ResultDeny, "", msg)
