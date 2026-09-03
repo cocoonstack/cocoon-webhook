@@ -317,27 +317,3 @@ func TestValidateCocoonSetSpecReportsToolboxConnTypeOnce(t *testing.T) {
 		t.Errorf("want exactly one connType error, got %d: %v", len(connTypeErrs), errs)
 	}
 }
-
-func TestSpecEqualDetectsMetadataOnlyChange(t *testing.T) {
-	base := cocoonv1.CocoonSet{
-		Spec: cocoonv1.CocoonSetSpec{
-			Agent: cocoonv1.AgentSpec{
-				Image:     "ghcr.io/x:1",
-				Mode:      cocoonv1.AgentModeClone,
-				VMOptions: cocoonv1.VMOptions{Backend: cocoonv1.BackendFirecracker},
-			},
-		},
-	}
-
-	withFinalizer := base.DeepCopy()
-	withFinalizer.Finalizers = []string{"cocoonset.cocoonstack.io/finalizer"}
-	if !specEqual(&base, withFinalizer) {
-		t.Errorf("specEqual should return true when only metadata differs")
-	}
-
-	diffSpec := base.DeepCopy()
-	diffSpec.Spec.Agent.Mode = cocoonv1.AgentModeRun
-	if specEqual(&base, diffSpec) {
-		t.Errorf("specEqual should return false when spec differs")
-	}
-}

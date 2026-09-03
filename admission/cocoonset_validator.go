@@ -37,15 +37,13 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 		var old cocoonv1.CocoonSet
 		if err := json.Unmarshal(req.OldObject.Raw, &old); err != nil {
 			logger.Warnf(ctx, "decode old cocoonset %s/%s: %v", req.Namespace, req.Name, err)
-		} else if specEqual(&cs, &old) {
+		} else if equality.Semantic.DeepEqual(cs.Spec, old.Spec) {
 			return recordAllow(metrics.HandlerValidateCocoonSet, metrics.ResultSkipped, metrics.ReasonNoChange)
 		}
 	}
 
 	if errs := validateCocoonSetSpec(&cs); len(errs) > 0 {
-		msg := "cocoon-webhook: invalid CocoonSet spec: " + strings.Join(errs, "; ")
-		logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
-		return recordDeny(metrics.HandlerValidateCocoonSet, metrics.ResultDeny, "", msg)
+		return denyf(ctx, logger, metrics.HandlerValidateCocoonSet, req, "cocoon-webhook: invalid CocoonSet spec: "+strings.Join(errs, "; "))
 	}
 	return recordAllow(metrics.HandlerValidateCocoonSet, metrics.ResultAllow, "")
 }
@@ -133,10 +131,6 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	}
 
 	return errs
-}
-
-func specEqual(a, b *cocoonv1.CocoonSet) bool {
-	return equality.Semantic.DeepEqual(a.Spec, b.Spec)
 }
 
 // validateVMOptions validates shared VM knobs plus firecracker image

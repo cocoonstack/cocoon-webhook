@@ -103,7 +103,7 @@ func validateWorkloadScaleDown(ctx context.Context, req *admissionv1.AdmissionRe
 	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
 		return recordAllow(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 	}
-	return checkScaleDown(ctx, req, replicasOrDefault(oldObj.Spec.Replicas), replicasOrDefault(newObj.Spec.Replicas))
+	return checkScaleDown(ctx, req, ptr.Deref(oldObj.Spec.Replicas, 1), ptr.Deref(newObj.Spec.Replicas, 1))
 }
 
 // decodeUpdatePair decodes req.OldObject and req.Object, returning false on
@@ -118,12 +118,6 @@ func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.Admission
 		return false
 	}
 	return true
-}
-
-// replicasOrDefault defaults to 1 when the pointer is nil, matching the
-// apps controller's default for Spec.Replicas.
-func replicasOrDefault(r *int32) int32 {
-	return ptr.Deref(r, 1)
 }
 
 func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldReplicas, newReplicas int32) *admissionv1.AdmissionResponse {

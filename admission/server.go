@@ -38,34 +38,35 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/validate", admit(s.validateWorkload))
 	mux.HandleFunc("/validate-cocoonset", admit(s.validateCocoonSet))
 	mux.HandleFunc("/validate-cocoonhibernation", admit(s.validateCocoonHibernation))
-	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc("/readyz", s.handleReadyz)
+	mux.HandleFunc("/healthz", okHandler("ok"))
+	mux.HandleFunc("/readyz", okHandler("ready"))
 	return mux
 }
 
-func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) { writeOK(w, "ok") }
-
-func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) { writeOK(w, "ready") }
-
-func writeOK(w http.ResponseWriter, body string) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(body))
+func okHandler(body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}
 }
 
 func admit(handler commonadmission.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { commonadmission.Serve(w, r, 0, handler) }
 }
 
-// recordAllow and recordDeny pair the admission counter with the response so
-// every handler exit records exactly one sample.
 func recordAllow(handler, result, reason string) *admissionv1.AdmissionResponse {
-	metrics.RecordAdmission(handler, result, reason)
+	metrics.AdmissionTotal.WithLabelValues(handler, result, reason).Inc()
 	return commonadmission.Allow()
 }
 
 func recordDeny(handler, result, reason, msg string) *admissionv1.AdmissionResponse {
-	metrics.RecordAdmission(handler, result, reason)
+	metrics.AdmissionTotal.WithLabelValues(handler, result, reason).Inc()
 	return commonadmission.Deny(msg)
+}
+
+func denyf(ctx context.Context, logger *log.Fields, handler string, req *admissionv1.AdmissionRequest, msg string) *admissionv1.AdmissionResponse {
+	logger.Warnf(ctx, "validate %s/%s DENY: %s", req.Namespace, req.Name, msg)
+	return recordDeny(handler, metrics.ResultDeny, "", msg)
 }
 
 func decodeOrDeny(ctx context.Context, logger *log.Fields, handler, kind string, req *admissionv1.AdmissionRequest, out any) *admissionv1.AdmissionResponse {

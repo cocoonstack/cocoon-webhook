@@ -24,8 +24,7 @@ type Reloader struct {
 	loadedMTimes [2]time.Time
 }
 
-// NewReloader loads the initial keypair and returns a Reloader. Errors
-// here are fatal — a webhook with no cert can't serve HTTPS.
+// NewReloader loads the initial keypair and returns a Reloader.
 func NewReloader(ctx context.Context, certFile, keyFile string) (*Reloader, error) {
 	r := &Reloader{ctx: ctx, certFile: certFile, keyFile: keyFile}
 	if err := r.load(); err != nil {

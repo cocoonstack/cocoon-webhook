@@ -45,9 +45,3 @@ var AdmissionTotal = prometheus.NewCounterVec(
 	},
 	[]string{labelHandler, labelResult, labelReason},
 )
-
-// RecordAdmission increments the admission counter. reason qualifies a
-// skipped/error result and is "" for a real allow/deny.
-func RecordAdmission(handler, result, reason string) {
-	AdmissionTotal.WithLabelValues(handler, result, reason).Inc()
-}
