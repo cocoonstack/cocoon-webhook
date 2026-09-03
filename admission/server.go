@@ -3,8 +3,13 @@
 package admission
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/projecteru2/core/log"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -61,4 +66,12 @@ func recordAllow(handler, result, reason string) *admissionv1.AdmissionResponse 
 func recordDeny(handler, result, reason, msg string) *admissionv1.AdmissionResponse {
 	metrics.RecordAdmission(handler, result, reason)
 	return commonadmission.Deny(msg)
+}
+
+func decodeOrDeny(ctx context.Context, logger *log.Fields, handler, kind string, req *admissionv1.AdmissionRequest, out any) *admissionv1.AdmissionResponse {
+	if err := json.Unmarshal(req.Object.Raw, out); err != nil {
+		logger.Errorf(ctx, err, "decode %s %s/%s", strings.ToLower(kind), req.Namespace, req.Name)
+		return recordDeny(handler, metrics.ResultError, metrics.ReasonDecode, fmt.Sprintf("decode %s: %v", kind, err))
+	}
+	return nil
 }

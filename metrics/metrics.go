@@ -11,8 +11,7 @@ const (
 	HandlerValidateCocoonSet   = "validate_cocoonset"
 	HandlerValidateHibernation = "validate_cocoonhibernation"
 
-	// Result label values. skipped marks a request passed through without
-	// adjudicating (incl. fail-open decode); fail-closed failures are error.
+	// skipped marks a pass-through without adjudication; fail-closed failures are error.
 	ResultAllow   = "allow"
 	ResultDeny    = "deny"
 	ResultError   = "error"

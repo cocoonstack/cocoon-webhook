@@ -27,9 +27,8 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 	}
 
 	var cs cocoonv1.CocoonSet
-	if err := json.Unmarshal(req.Object.Raw, &cs); err != nil {
-		logger.Errorf(ctx, err, "decode cocoonset %s/%s", req.Namespace, req.Name)
-		return recordDeny(metrics.HandlerValidateCocoonSet, metrics.ResultError, metrics.ReasonDecode, fmt.Sprintf("decode CocoonSet: %v", err))
+	if resp := decodeOrDeny(ctx, logger, metrics.HandlerValidateCocoonSet, "CocoonSet", req, &cs); resp != nil {
+		return resp
 	}
 
 	// Allow spec-unchanged UPDATEs (finalizer/metadata patches): an invalid
