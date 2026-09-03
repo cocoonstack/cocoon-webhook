@@ -21,7 +21,7 @@ validation cannot express:
 - `spec.toolboxes[*]` non-static modes require `image`, and get the same `os`/`connType`/`backend` enum checks and firecracker-Windows/cloudimg-URL rules as `spec.agent`
 - `spec.toolboxes[*].backend` must match `spec.agent.backend` (static toolboxes skip this check)
 - `spec.toolboxes[*]` static-mode entries: `connType` may be left unset (falls back to OS-based inference: Linux→ssh, Windows→rdp, Android→adb); a non-empty value must be one of `ssh` / `rdp` / `vnc` / `adb`
-- clone-mode images (`spec.agent.image`, `spec.toolboxes[*].image`) must be a lowercase `repo[:tag]` — registry ports, digests, and uppercase characters are rejected, because the snapshot pull path resolves images under the org registry base and has no external-ref fallback
+- clone-mode images (`spec.agent.image`, `spec.toolboxes[*].image`) must be a relative `repo[:tag]` with a lowercase repo path — registry hosts and ports, digests, and uppercase repo characters are rejected (the tag keeps the OCI tag character set), because the snapshot pull path resolves images under the org registry base and has no external-ref fallback
 - `spec.snapshotPolicy ∈ {always, main-only, never}`
 - `spec.hibernatePolicy ∈ {retain, release}`
 
