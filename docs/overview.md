@@ -12,6 +12,14 @@ four admission endpoints plus health and metrics surfaces:
 | `POST /validate-cocoonset` | Validating | CocoonSet CREATE / UPDATE | Catches the cross-field business rules the CRD's OpenAPI schema cannot express (image required, toolbox name uniqueness, static-mode prerequisites). See [Validation rules](validation.md). |
 | `POST /validate-cocoonhibernation` | Validating | CocoonHibernation CREATE | Checks `spec.desire` against `{hibernate, wake}`, requires `metadata.name` to equal `spec.podRef.name` (one CR per pod, named after it, so racing duplicate CREATEs collide on name uniqueness), and rejects a CR whose pod already has one — live or still terminating — so two CRs can never fight over one VM. Retargeting an existing CR is blocked by the CRD's CEL rule on `spec.podRef`. See [Validation rules](validation.md). |
 | `GET /healthz` | Liveness | — | Always 200 once the binary is running. |
+
+The `/mutate` and `/validate` registrations carry a `namespaceSelector` that
+excludes `kube-system`, `kube-node-lease`, `kube-public`, `cocoon-system` and
+`cert-manager`, so a webhook outage under `failurePolicy: Fail` cannot block
+the pods those namespaces need to recover (the webhook's own included). The
+flip side: a cocoon-tolerated pod or workload placed in one of them is neither
+gated at creation nor protected against scale-down. Cocoon workloads belong in
+ordinary namespaces.
 | `GET /readyz` | Readiness | — | Always 200 once the binary is running (liveness-equivalent stub; does not probe apiserver reachability). |
 | `GET /metrics` | Prometheus | — | Plain HTTP on `:9090`, separate from the admission TLS port. |
 
