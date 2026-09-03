@@ -14,12 +14,19 @@ This installs:
 - `MutatingWebhookConfiguration` for Pod CREATE
 - `ValidatingWebhookConfiguration` for Deployment/StatefulSet UPDATE, CocoonSet CREATE/UPDATE, and CocoonHibernation CREATE
 
-To override the image tag or replica count, build a kustomize overlay
+All four registrations set `failurePolicy: Fail` and `timeoutSeconds: 5`,
+so the cluster fails closed for the resources and namespaces they cover
+while the webhook is unreachable.
+
+The default image is `ghcr.io/cocoonstack/cocoon-webhook:latest`. To
+override the image tag or replica count, build a kustomize overlay
 that imports `config/default` as a base. See
 [Configuration](configuration.md) for the environment variables the
 resulting Deployment can set.
 
 ## Building from source
+
+Requires Go 1.27 or newer.
 
 ```bash
 make all            # full pipeline: deps + fmt + lint + test + build
