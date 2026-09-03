@@ -1,6 +1,5 @@
-// Package certs provides a TLS keypair Reloader that re-reads the
-// cert+key from disk when their mtime changes, so cert-manager
-// rotations land without a pod restart.
+// Package certs reloads the TLS keypair when its mtime changes, so
+// cert-manager rotations land without a pod restart.
 package certs
 
 import (

@@ -2,7 +2,6 @@ package admission
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/projecteru2/core/log"
@@ -26,9 +25,8 @@ func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissio
 	}
 
 	var hib cocoonv1.CocoonHibernation
-	if err := json.Unmarshal(req.Object.Raw, &hib); err != nil {
-		logger.Errorf(ctx, err, "decode cocoonhibernation %s/%s", req.Namespace, req.Name)
-		return recordDeny(metrics.HandlerValidateHibernation, metrics.ResultError, metrics.ReasonDecode, fmt.Sprintf("decode CocoonHibernation: %v", err))
+	if resp := decodeOrDeny(ctx, logger, metrics.HandlerValidateHibernation, "CocoonHibernation", req, &hib); resp != nil {
+		return resp
 	}
 
 	if !hib.Spec.Desire.IsValid() {
