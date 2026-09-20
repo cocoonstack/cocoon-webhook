@@ -19,6 +19,7 @@ import (
 // pod created cluster-wide, so skip decoding containers/volumes/probes.
 type podShape struct {
 	Metadata struct {
+		Annotations     map[string]string       `json:"annotations"`
 		OwnerReferences []metav1.OwnerReference `json:"ownerReferences"`
 	} `json:"metadata"`
 	Spec struct {
@@ -41,7 +42,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonDecode)
 	}
 
-	if !meta.HasCocoonTolerationKey(pod.Spec.Tolerations) {
+	if !meta.HasCocoonTolerationKey(pod.Spec.Tolerations) && pod.Metadata.Annotations[meta.AnnotationVMName] == "" {
 		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
 	}
 

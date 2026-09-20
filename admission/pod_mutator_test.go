@@ -2,6 +2,7 @@ package admission
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -93,6 +94,40 @@ func TestMutatePodDeniesBareCocoonPod(t *testing.T) {
 	resp := srv.mutatePod(t.Context(), buildPodReview(t, pod))
 	if resp.Allowed {
 		t.Errorf("bare cocoon pod should be denied")
+	}
+}
+
+func TestMutatePodDeniesBareVMPodWithoutToleration(t *testing.T) {
+	srv := newTestServer(t)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "rogue",
+			Namespace:   "tenant",
+			Annotations: map[string]string{meta.AnnotationVMName: "vk-tenant-rogue"},
+		},
+		Spec: corev1.PodSpec{NodeName: "cocoon-pool-node-1"},
+	}
+	if resp := srv.mutatePod(t.Context(), buildPodReview(t, pod)); resp.Allowed {
+		t.Error("a pod that names a VM must pass the CocoonSet gate even without the toleration")
+	}
+}
+
+func TestMutatePodDeniesVMPodFromOtherCreatorWithoutToleration(t *testing.T) {
+	srv := newTestServer(t)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "rogue",
+			Namespace:       "tenant",
+			Annotations:     map[string]string{meta.AnnotationVMName: "vk-tenant-rogue"},
+			OwnerReferences: []metav1.OwnerReference{{Kind: meta.KindCocoonSet, Name: "demo"}},
+		},
+		Spec: corev1.PodSpec{NodeName: "cocoon-pool-node-1"},
+	}
+	review := buildPodReview(t, pod)
+	review.Request.UserInfo.Username = "system:serviceaccount:tenant:default"
+	resp := srv.mutatePod(t.Context(), review)
+	if resp.Allowed || !strings.Contains(resp.Result.Message, "created by the CocoonSet controller") {
+		t.Errorf("a pod naming a VM with a forged owner must reach the creator check without the toleration, got %v", resp.Result)
 	}
 }
 
