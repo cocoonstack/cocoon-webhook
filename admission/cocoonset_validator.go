@@ -19,7 +19,7 @@ import (
 
 // validateCocoonSet enforces cross-field business rules that the CRD OpenAPI schema cannot express.
 func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
-	logger := log.WithFunc("validateCocoonSet")
+	logger := log.WithFunc("admission.validateCocoonSet")
 	req := review.Request
 
 	if req.Operation != admissionv1.Create && req.Operation != admissionv1.Update {

@@ -41,7 +41,6 @@ func TestReloaderPicksUpRotation(t *testing.T) {
 		t.Fatalf("NewReloader: %v", err)
 	}
 
-	// Overwrite with a fresh keypair and bump mtime ahead of the load.
 	_, _ = writeKeypair(t, dir, "second")
 	future := time.Now().Add(2 * time.Second)
 	if err := os.Chtimes(certPath, future, future); err != nil {
@@ -70,7 +69,6 @@ func TestReloaderServesStaleOnReloadFailure(t *testing.T) {
 		t.Fatalf("NewReloader: %v", err)
 	}
 
-	// Truncate the cert to garbage, bump mtime so the reloader tries it.
 	if err := os.WriteFile(certPath, []byte("not a pem"), 0o644); err != nil {
 		t.Fatalf("write garbage: %v", err)
 	}

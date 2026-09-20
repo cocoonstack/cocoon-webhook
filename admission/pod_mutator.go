@@ -37,7 +37,7 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	var pod podShape
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 		// Bad client input — apiserver will reject it anyway, so fail open.
-		log.WithFunc("mutatePod").Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
+		log.WithFunc("admission.mutatePod").Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
 		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonDecode)
 	}
 
@@ -46,14 +46,14 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	}
 
 	if !meta.IsOwnedByCocoonSet(pod.Metadata.OwnerReferences) {
-		log.WithFunc("mutatePod").Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
+		log.WithFunc("admission.mutatePod").Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
 		return recordDeny(metrics.HandlerMutate, metrics.ResultDeny, "", "cocoon pods must be managed by a CocoonSet")
 	}
 
 	// Owner references are client-settable and unverified by the apiserver;
 	// the authenticated requester is the only unforgeable signal.
 	if !slices.Contains(s.podCreators, req.UserInfo.Username) {
-		log.WithFunc("mutatePod").Warnf(ctx, "deny cocoon pod %s/%s: creator %q is not an allowed controller", req.Namespace, req.Name, req.UserInfo.Username)
+		log.WithFunc("admission.mutatePod").Warnf(ctx, "deny cocoon pod %s/%s: creator %q is not an allowed controller", req.Namespace, req.Name, req.UserInfo.Username)
 		return recordDeny(metrics.HandlerMutate, metrics.ResultDeny, "", fmt.Sprintf("cocoon pods must be created by the CocoonSet controller, got user %q", req.UserInfo.Username))
 	}
 
