@@ -29,6 +29,8 @@ validation cannot express:
 
 Managed VM names are limited to 46 characters so that appending
 `-hibernate-import` still fits the engine's 63-character snapshot name limit.
+A macOS agent or toolbox never hibernates or forks, so its VM name gets the
+whole 63 characters.
 This also leaves room for the shorter `fork-` snapshot prefix. Validation uses
 the naming functions from cocoon-common:
 

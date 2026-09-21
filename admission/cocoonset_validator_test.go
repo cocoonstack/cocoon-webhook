@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -328,29 +329,35 @@ func TestValidateCocoonSetNameBudget(t *testing.T) {
 		replicas      int32
 		toolboxSize   int
 		toolboxMode   cocoonv1.ToolboxMode
+		os            cocoonv1.OSType
 		wantField     string
+		wantMax       int
 	}{
 		{name: "main snapshot fits exactly", namespaceSize: 7, setSize: 33},
-		{name: "main snapshot exceeds by one", namespaceSize: 7, setSize: 34, wantField: "spec.agent"},
+		{name: "main snapshot exceeds by one", namespaceSize: 7, setSize: 34, wantField: "spec.agent", wantMax: 46},
 		{name: "long namespace fits exactly", namespaceSize: 24, setSize: 16},
-		{name: "long namespace exceeds by one", namespaceSize: 24, setSize: 17, wantField: "spec.agent"},
+		{name: "long namespace exceeds by one", namespaceSize: 24, setSize: 17, wantField: "spec.agent", wantMax: 46},
 		{name: "slot nine fits", namespaceSize: 7, setSize: 33, replicas: 9},
-		{name: "slot ten exceeds", namespaceSize: 7, setSize: 33, replicas: 10, wantField: "spec.agent"},
+		{name: "slot ten exceeds", namespaceSize: 7, setSize: 33, replicas: 10, wantField: "spec.agent", wantMax: 46},
+		{name: "macos main has the whole engine limit", namespaceSize: 7, setSize: 50, os: cocoonv1.OSMacos},
+		{name: "macos main exceeds the engine limit", namespaceSize: 7, setSize: 51, os: cocoonv1.OSMacos, wantField: "spec.agent", wantMax: 63},
 		{name: "toolbox snapshot fits exactly", namespaceSize: 7, setSize: 4, toolboxSize: 30},
-		{name: "toolbox snapshot exceeds by one", namespaceSize: 7, setSize: 4, toolboxSize: 31, wantField: "spec.toolboxes[0]"},
-		{name: "clone toolbox snapshot exceeds", namespaceSize: 7, setSize: 4, toolboxSize: 31, toolboxMode: cocoonv1.ToolboxModeClone, wantField: "spec.toolboxes[0]"},
+		{name: "toolbox snapshot exceeds by one", namespaceSize: 7, setSize: 4, toolboxSize: 31, wantField: "spec.toolboxes[0]", wantMax: 46},
+		{name: "clone toolbox snapshot exceeds", namespaceSize: 7, setSize: 4, toolboxSize: 31, toolboxMode: cocoonv1.ToolboxModeClone, wantField: "spec.toolboxes[0]", wantMax: 46},
+		{name: "macos toolbox has the whole engine limit", namespaceSize: 7, setSize: 4, toolboxSize: 47, os: cocoonv1.OSMacos},
+		{name: "macos toolbox exceeds the engine limit", namespaceSize: 7, setSize: 4, toolboxSize: 48, os: cocoonv1.OSMacos, wantField: "spec.toolboxes[0]", wantMax: 63},
 		{name: "static toolbox has no managed snapshot", namespaceSize: 7, setSize: 4, toolboxSize: 63, toolboxMode: cocoonv1.ToolboxModeStatic},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cs := &cocoonv1.CocoonSet{
 				ObjectMeta: metav1.ObjectMeta{Namespace: strings.Repeat("n", tt.namespaceSize), Name: strings.Repeat("s", tt.setSize)},
-				Spec:       cocoonv1.CocoonSetSpec{Agent: cocoonv1.AgentSpec{Image: "ubuntu:v1", Replicas: tt.replicas}},
+				Spec:       cocoonv1.CocoonSetSpec{Agent: cocoonv1.AgentSpec{Image: "ubuntu:v1", Replicas: tt.replicas, VMOptions: cocoonv1.VMOptions{OS: tt.os}}},
 			}
 			if tt.toolboxSize > 0 {
 				cs.Spec.Toolboxes = []cocoonv1.ToolboxSpec{{
 					Name: strings.Repeat("t", tt.toolboxSize), Image: "tools:v1", Mode: tt.toolboxMode,
-					StaticIP: "192.0.2.1", StaticVMID: "external-vm",
+					StaticIP: "192.0.2.1", StaticVMID: "external-vm", VMOptions: cocoonv1.VMOptions{OS: tt.os},
 				}}
 			}
 			review := buildUpdateReview(t, "CocoonSet", nil, cs)
@@ -364,7 +371,7 @@ func TestValidateCocoonSetNameBudget(t *testing.T) {
 				}
 				return
 			}
-			if resp.Allowed || resp.Result == nil || !strings.Contains(resp.Result.Message, tt.wantField+" derives VM name") || !strings.Contains(resp.Result.Message, "maximum is 46") {
+			if resp.Allowed || resp.Result == nil || !strings.Contains(resp.Result.Message, tt.wantField+" derives VM name") || !strings.Contains(resp.Result.Message, fmt.Sprintf("maximum is %d", tt.wantMax)) {
 				t.Errorf("want name-budget denial for %s, got %+v", tt.wantField, resp)
 			}
 		})

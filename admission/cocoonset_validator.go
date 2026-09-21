@@ -18,7 +18,10 @@ import (
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-const maxManagedVMNameLength = 63 - len("-hibernate-import")
+const (
+	maxVMNameLength        = 63
+	maxManagedVMNameLength = maxVMNameLength - len("-hibernate-import")
+)
 
 func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("admission.validateCocoonSet")
@@ -53,7 +56,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	var errs []string
 
 	vmName := meta.VMNameForDeployment(cs.Namespace, cs.Name, max(0, int(cs.Spec.Agent.Replicas)))
-	if msg := vmNameLengthError("spec.agent", vmName); msg != "" {
+	if msg := vmNameLengthError("spec.agent", vmName, cs.Spec.Agent.OS); msg != "" {
 		errs = append(errs, msg)
 	}
 	if cs.Spec.Agent.Image == "" {
@@ -112,7 +115,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 		}
 
 		vmName := meta.VMNameForPod(cs.Namespace, cs.Name+"-"+tb.Name)
-		if msg := vmNameLengthError(path, vmName); msg != "" {
+		if msg := vmNameLengthError(path, vmName, tb.OS); msg != "" {
 			errs = append(errs, msg)
 		}
 		if tb.Image == "" {
@@ -141,7 +144,13 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	return errs
 }
 
-func vmNameLengthError(path, name string) string {
+func vmNameLengthError(path, name string, os cocoonv1.OSType) string {
+	if os.Default() == cocoonv1.OSMacos {
+		if len(name) <= maxVMNameLength {
+			return ""
+		}
+		return fmt.Sprintf("%s derives VM name %q (%d characters); maximum is %d", path, name, len(name), maxVMNameLength)
+	}
 	if len(name) <= maxManagedVMNameLength {
 		return ""
 	}
