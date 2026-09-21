@@ -25,6 +25,28 @@ validation cannot express:
 - `spec.snapshotPolicy ∈ {always, main-only, never}`
 - `spec.hibernatePolicy ∈ {retain, release}`
 
+### Derived name budget
+
+Managed VM names are limited to 46 characters so that appending
+`-hibernate-import` still fits the engine's 63-character snapshot name limit.
+This also leaves room for the shorter `fork-` snapshot prefix. Validation uses
+the naming functions from cocoon-common:
+
+- Agents use `vk-<namespace>-<cocoonset>-<slot>`. The main agent occupies slot 0;
+  `spec.agent.replicas` counts additional agents in slots 1 through that value.
+  The validator checks the largest slot, including its decimal digit count.
+- Non-static toolboxes use `vk-<namespace>-<cocoonset>-<toolbox-name>` and have
+  the same budget. Static toolboxes use external VMs and skip this local VM
+  name check; their existing name and connection checks still apply.
+
+For example, in namespace `default`, a 33-character CocoonSet name fits with
+slots 0 through 9. A 34-character name is rejected even with zero sub-agents;
+scaling the 33-character name to 10 sub-agents is also rejected. Shorten the
+CocoonSet or toolbox name, or use a shorter namespace. Names are not truncated
+or rewritten, and this check does not rename existing resources.
+
+### Admission operations
+
 These rules run on CocoonSet CREATE, and on UPDATE only when the spec
 changed — a spec-unchanged UPDATE (a finalizer or metadata patch) is
 skipped, so an invalid CR that predates stricter validation stays

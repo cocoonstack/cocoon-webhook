@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
 )
@@ -315,5 +317,115 @@ func TestValidateCocoonSetSpecReportsToolboxConnTypeOnce(t *testing.T) {
 	}
 	if len(connTypeErrs) != 1 {
 		t.Errorf("want exactly one connType error, got %d: %v", len(connTypeErrs), errs)
+	}
+}
+
+func TestValidateCocoonSetNameBudget(t *testing.T) {
+	tests := []struct {
+		name          string
+		namespaceSize int
+		setSize       int
+		replicas      int32
+		toolboxSize   int
+		toolboxMode   cocoonv1.ToolboxMode
+		wantField     string
+	}{
+		{name: "main snapshot fits exactly", namespaceSize: 7, setSize: 33},
+		{name: "main snapshot exceeds by one", namespaceSize: 7, setSize: 34, wantField: "spec.agent"},
+		{name: "long namespace fits exactly", namespaceSize: 24, setSize: 16},
+		{name: "long namespace exceeds by one", namespaceSize: 24, setSize: 17, wantField: "spec.agent"},
+		{name: "slot nine fits", namespaceSize: 7, setSize: 33, replicas: 9},
+		{name: "slot ten exceeds", namespaceSize: 7, setSize: 33, replicas: 10, wantField: "spec.agent"},
+		{name: "toolbox snapshot fits exactly", namespaceSize: 7, setSize: 4, toolboxSize: 30},
+		{name: "toolbox snapshot exceeds by one", namespaceSize: 7, setSize: 4, toolboxSize: 31, wantField: "spec.toolboxes[0]"},
+		{name: "clone toolbox snapshot exceeds", namespaceSize: 7, setSize: 4, toolboxSize: 31, toolboxMode: cocoonv1.ToolboxModeClone, wantField: "spec.toolboxes[0]"},
+		{name: "static toolbox has no managed snapshot", namespaceSize: 7, setSize: 4, toolboxSize: 63, toolboxMode: cocoonv1.ToolboxModeStatic},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cs := &cocoonv1.CocoonSet{
+				ObjectMeta: metav1.ObjectMeta{Namespace: strings.Repeat("n", tt.namespaceSize), Name: strings.Repeat("s", tt.setSize)},
+				Spec:       cocoonv1.CocoonSetSpec{Agent: cocoonv1.AgentSpec{Image: "ubuntu:v1", Replicas: tt.replicas}},
+			}
+			if tt.toolboxSize > 0 {
+				cs.Spec.Toolboxes = []cocoonv1.ToolboxSpec{{
+					Name: strings.Repeat("t", tt.toolboxSize), Image: "tools:v1", Mode: tt.toolboxMode,
+					StaticIP: "192.0.2.1", StaticVMID: "external-vm",
+				}}
+			}
+			review := buildUpdateReview(t, "CocoonSet", nil, cs)
+			review.Request.Kind.Group = cocoonv1.GroupVersion.Group
+			review.Request.Operation = admissionv1.Create
+			review.Request.Namespace, review.Request.Name = cs.Namespace, cs.Name
+			resp := newTestServer(t).validateCocoonSet(t.Context(), review)
+			if tt.wantField == "" {
+				if !resp.Allowed {
+					t.Fatalf("valid name budget denied: %v", resp.Result)
+				}
+				return
+			}
+			if resp.Allowed || resp.Result == nil || !strings.Contains(resp.Result.Message, tt.wantField+" derives VM name") || !strings.Contains(resp.Result.Message, "maximum is 46") {
+				t.Errorf("want name-budget denial for %s, got %+v", tt.wantField, resp)
+			}
+		})
+	}
+}
+
+func TestValidateCocoonSetNameBudgetOnUpdate(t *testing.T) {
+	tests := []struct {
+		name        string
+		setSize     int
+		oldReplicas int32
+		newReplicas int32
+		wantAllowed bool
+	}{
+		{name: "scaling within one digit", setSize: 33, oldReplicas: 0, newReplicas: 9, wantAllowed: true},
+		{name: "scaling to slot ten", setSize: 33, oldReplicas: 9, newReplicas: 10},
+		{name: "repairing slot budget", setSize: 33, oldReplicas: 10, newReplicas: 9, wantAllowed: true},
+		{name: "legacy finalizer removal", setSize: 34, wantAllowed: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := &cocoonv1.CocoonSet{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: strings.Repeat("s", tt.setSize), Finalizers: []string{"cocoonstack.io/cleanup"}},
+				Spec:       cocoonv1.CocoonSetSpec{Agent: cocoonv1.AgentSpec{Image: "ubuntu:v1", Replicas: tt.oldReplicas}},
+			}
+			updated := old.DeepCopy()
+			updated.Finalizers = nil
+			updated.Spec.Agent.Replicas = tt.newReplicas
+			review := buildUpdateReview(t, "CocoonSet", old, updated)
+			review.Request.Kind.Group = cocoonv1.GroupVersion.Group
+			review.Request.Namespace, review.Request.Name = updated.Namespace, updated.Name
+			resp := newTestServer(t).validateCocoonSet(t.Context(), review)
+			if resp.Allowed != tt.wantAllowed {
+				t.Fatalf("allowed = %v, want %v: %v", resp.Allowed, tt.wantAllowed, resp.Result)
+			}
+			if !resp.Allowed && (resp.Result == nil || !strings.Contains(resp.Result.Message, "spec.agent derives VM name")) {
+				t.Errorf("want agent name-budget denial, got %v", resp.Result)
+			}
+		})
+	}
+}
+
+func TestValidateCocoonSetRejectsOversizedToolboxModeChange(t *testing.T) {
+	old := &cocoonv1.CocoonSet{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "demo"},
+		Spec: cocoonv1.CocoonSetSpec{
+			Agent: cocoonv1.AgentSpec{Image: "ubuntu:v1"},
+			Toolboxes: []cocoonv1.ToolboxSpec{{
+				Name: strings.Repeat("t", 31), Mode: cocoonv1.ToolboxModeStatic,
+				StaticIP: "192.0.2.1", StaticVMID: "external-vm",
+			}},
+		},
+	}
+	updated := old.DeepCopy()
+	updated.Spec.Toolboxes[0].Mode = cocoonv1.ToolboxModeRun
+	updated.Spec.Toolboxes[0].Image = "tools:v1"
+	review := buildUpdateReview(t, "CocoonSet", old, updated)
+	review.Request.Kind.Group = cocoonv1.GroupVersion.Group
+	review.Request.Namespace, review.Request.Name = updated.Namespace, updated.Name
+	resp := newTestServer(t).validateCocoonSet(t.Context(), review)
+	if resp.Allowed || resp.Result == nil || !strings.Contains(resp.Result.Message, "spec.toolboxes[0] derives VM name") {
+		t.Errorf("want toolbox name-budget denial, got %+v", resp)
 	}
 }

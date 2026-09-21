@@ -13,11 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
+	"github.com/cocoonstack/cocoon-common/meta"
 	"github.com/cocoonstack/cocoon-common/ociutil"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
 
-// validateCocoonSet enforces cross-field business rules that the CRD OpenAPI schema cannot express.
+const maxManagedVMNameLength = 63 - len("-hibernate-import")
+
 func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("admission.validateCocoonSet")
 	req := review.Request
@@ -31,8 +33,7 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 		return resp
 	}
 
-	// Allow spec-unchanged UPDATEs (finalizer/metadata patches): an invalid
-	// CR that predates stricter validation must stay deletable.
+	// Older invalid CRs must remain deletable through finalizer updates.
 	if req.Operation == admissionv1.Update && req.OldObject.Raw != nil {
 		var old cocoonv1.CocoonSet
 		if err := json.Unmarshal(req.OldObject.Raw, &old); err != nil {
@@ -51,6 +52,10 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	var errs []string
 
+	vmName := meta.VMNameForDeployment(cs.Namespace, cs.Name, max(0, int(cs.Spec.Agent.Replicas)))
+	if msg := vmNameLengthError("spec.agent", vmName); msg != "" {
+		errs = append(errs, msg)
+	}
 	if cs.Spec.Agent.Image == "" {
 		errs = append(errs, "spec.agent.image is required")
 	}
@@ -92,8 +97,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			errs = append(errs, fmt.Sprintf("%s.mode must be run, clone, or static, got %q", path, tb.Mode))
 		}
 
-		// Static toolboxes run no hypervisor locally: skip backend/image checks
-		// but keep ConnType — clients still reach them via SSH/RDP/VNC/ADB.
+		// Static toolboxes use external VMs but still expose a connection protocol.
 		if tb.Mode == cocoonv1.ToolboxModeStatic {
 			if tb.StaticIP == "" {
 				errs = append(errs, path+".staticIP is required when mode=static")
@@ -107,6 +111,10 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			continue
 		}
 
+		vmName := meta.VMNameForPod(cs.Namespace, cs.Name+"-"+tb.Name)
+		if msg := vmNameLengthError(path, vmName); msg != "" {
+			errs = append(errs, msg)
+		}
 		if tb.Image == "" {
 			errs = append(errs, path+".image is required when mode is run or clone")
 		}
@@ -133,8 +141,13 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	return errs
 }
 
-// validateVMOptions validates shared VM knobs plus firecracker image
-// constraints; path is the JSON path prefix for reported errors.
+func vmNameLengthError(path, name string) string {
+	if len(name) <= maxManagedVMNameLength {
+		return ""
+	}
+	return fmt.Sprintf("%s derives VM name %q (%d characters); maximum is %d to reserve the hibernate import suffix", path, name, len(name), maxManagedVMNameLength)
+}
+
 func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []string {
 	var errs []string
 
@@ -148,8 +161,7 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 		errs = append(errs, fmt.Sprintf("%s.backend must be cloud-hypervisor or firecracker, got %q", path, opts.Backend))
 	}
 
-	// Firecracker direct-boots kernels from OCI layers: no Windows, no
-	// cloudimg qcow2 URLs (those need UEFI/BIOS firmware).
+	// Firecracker direct-boots kernels without UEFI or BIOS firmware.
 	if opts.Backend.Default() == cocoonv1.BackendFirecracker {
 		if opts.OS.Default() == cocoonv1.OSWindows {
 			errs = append(errs, fmt.Sprintf("%s: firecracker does not support Windows guests", path))
@@ -162,8 +174,6 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	return errs
 }
 
-// validateConnType returns the error message for an invalid ConnType, empty
-// when unset or valid; standalone so static toolboxes can validate it alone.
 func validateConnType(path string, ct cocoonv1.ConnType) string {
 	if ct == "" || ct.IsValid() {
 		return ""
