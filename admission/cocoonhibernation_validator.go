@@ -17,7 +17,7 @@ var cocoonHibernationGVR = cocoonv1.GroupVersion.WithResource("cocoonhibernation
 
 // validateCocoonHibernation requires metadata.name == spec.podRef.name so duplicates collide on name uniqueness; the LIST catches pre-rule names.
 func (s *Server) validateCocoonHibernation(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
-	logger := log.WithFunc("validateCocoonHibernation")
+	logger := log.WithFunc("admission.validateCocoonHibernation")
 	req := review.Request
 
 	if req.Operation != admissionv1.Create {

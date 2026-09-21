@@ -45,7 +45,7 @@ func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.
 
 	tolerations, ok, err := s.fetchParentTolerations(ctx, req)
 	if err != nil {
-		log.WithFunc("validateScaleSubresource").Errorf(ctx, err, "fetch parent tolerations %s/%s", req.Namespace, req.Name)
+		log.WithFunc("admission.validateScaleSubresource").Errorf(ctx, err, "fetch parent tolerations %s/%s", req.Namespace, req.Name)
 		return recordDeny(metrics.HandlerValidate, metrics.ResultError, metrics.ReasonParentFetch, fmt.Sprintf("cocoon-webhook: cannot verify parent workload: %v", err))
 	}
 	if !ok {
@@ -129,6 +129,6 @@ func checkScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest, oldR
 			"Use a CocoonHibernation CR to suspend individual agents.",
 		req.Kind.Kind, req.Namespace, req.Name, oldReplicas, newReplicas,
 	)
-	log.WithFunc("checkScaleDown").Warn(ctx, msg)
+	log.WithFunc("admission.checkScaleDown").Warn(ctx, msg)
 	return recordDeny(metrics.HandlerValidate, metrics.ResultDeny, "", msg)
 }

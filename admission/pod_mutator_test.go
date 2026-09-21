@@ -2,6 +2,7 @@ package admission
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -96,6 +97,76 @@ func TestMutatePodDeniesBareCocoonPod(t *testing.T) {
 	}
 }
 
+func TestMutatePodDeniesBareVMPodWithoutToleration(t *testing.T) {
+	srv := newTestServer(t)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "rogue",
+			Namespace:   "tenant",
+			Annotations: map[string]string{meta.AnnotationVMName: "vk-tenant-rogue"},
+		},
+		Spec: corev1.PodSpec{NodeName: "cocoon-pool-node-1"},
+	}
+	if resp := srv.mutatePod(t.Context(), buildPodReview(t, pod)); resp.Allowed {
+		t.Error("a pod that names a VM must pass the CocoonSet gate even without the toleration")
+	}
+}
+
+func TestMutatePodDeniesVMPodFromOtherCreatorWithoutToleration(t *testing.T) {
+	srv := newTestServer(t)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "rogue",
+			Namespace:       "tenant",
+			Annotations:     map[string]string{meta.AnnotationVMName: "vk-tenant-rogue"},
+			OwnerReferences: []metav1.OwnerReference{{Kind: meta.KindCocoonSet, Name: "demo"}},
+		},
+		Spec: corev1.PodSpec{NodeName: "cocoon-pool-node-1"},
+	}
+	review := buildPodReview(t, pod)
+	review.Request.UserInfo.Username = "system:serviceaccount:tenant:default"
+	resp := srv.mutatePod(t.Context(), review)
+	if resp.Allowed || !strings.Contains(resp.Result.Message, "created by the CocoonSet controller") {
+		t.Errorf("a pod naming a VM with a forged owner must reach the creator check without the toleration, got %v", resp.Result)
+	}
+}
+
+func TestMutatePodUpdateDeniesAPodThatEntersTheGate(t *testing.T) {
+	srv := newTestServer(t)
+	old := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "rogue", Namespace: "tenant"}, Spec: corev1.PodSpec{NodeName: "cocoon-pool-node-1"}}
+	for name, mutate := range map[string]func(*corev1.Pod){
+		"toleration appended": func(pod *corev1.Pod) {
+			pod.Spec.Tolerations = []corev1.Toleration{{Key: meta.TolerationKey, Operator: corev1.TolerationOpExists}}
+		},
+		"vm name added": func(pod *corev1.Pod) {
+			pod.Annotations = map[string]string{meta.AnnotationVMName: "vk-tenant-rogue"}
+		},
+	} {
+		updated := old.DeepCopy()
+		mutate(updated)
+		review := buildPodUpdateReview(t, old, updated)
+		review.Request.UserInfo.Username = "system:serviceaccount:tenant:default"
+		if resp := srv.mutatePod(t.Context(), review); resp.Allowed {
+			t.Errorf("%s: an UPDATE that moves a pod into the gate must pass the CocoonSet checks", name)
+		}
+	}
+}
+
+func TestMutatePodUpdateSkipsAPodAlreadyInTheGate(t *testing.T) {
+	srv := newTestServer(t)
+	old := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo-0", Namespace: "ns", Annotations: map[string]string{meta.AnnotationVMName: "vk-ns-demo-0"}},
+		Spec:       corev1.PodSpec{Tolerations: []corev1.Toleration{{Key: meta.TolerationKey}}},
+	}
+	updated := old.DeepCopy()
+	updated.Annotations[meta.AnnotationVMID] = "vmid-1"
+	review := buildPodUpdateReview(t, old, updated)
+	review.Request.UserInfo.Username = "system:serviceaccount:cocoon-system:vk-cocoon"
+	if resp := srv.mutatePod(t.Context(), review); !resp.Allowed {
+		t.Errorf("a runtime patch on a pod already inside the gate must pass, got %v", resp.Result)
+	}
+}
+
 func TestMutatePodRecordsExactlyOneSample(t *testing.T) {
 	metrics.AdmissionTotal.Reset()
 	srv := newTestServer(t)
@@ -141,6 +212,18 @@ func admissionValue(t *testing.T, handler, result, reason string) float64 {
 		t.Fatalf("write metric: %v", err)
 	}
 	return dm.GetCounter().GetValue()
+}
+
+func buildPodUpdateReview(t *testing.T, old, updated *corev1.Pod) *admissionv1.AdmissionReview {
+	t.Helper()
+	oldRaw, err := json.Marshal(old)
+	if err != nil {
+		t.Fatalf("marshal old pod: %v", err)
+	}
+	review := buildPodReview(t, updated)
+	review.Request.Operation = admissionv1.Update
+	review.Request.OldObject = runtime.RawExtension{Raw: oldRaw}
+	return review
 }
 
 func buildPodReview(t *testing.T, pod *corev1.Pod) *admissionv1.AdmissionReview {

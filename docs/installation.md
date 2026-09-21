@@ -11,7 +11,7 @@ This installs:
 - `ServiceAccount` + `ClusterRole` (read deployments/statefulsets for scale-down validation, list cocoonhibernations for one-CR-per-pod validation)
 - cert-manager `Issuer` + `Certificate` (`cocoon-webhook-tls`) — **cert-manager must already be installed in the cluster**
 - `Deployment` (2 replicas) + `Service` (port 443 → 8443, port 9090 → 9090)
-- `MutatingWebhookConfiguration` for Pod CREATE
+- `MutatingWebhookConfiguration` for Pod CREATE and UPDATE
 - `ValidatingWebhookConfiguration` for Deployment/StatefulSet UPDATE, CocoonSet CREATE/UPDATE, and CocoonHibernation CREATE
 
 All four registrations set `failurePolicy: Fail` and `timeoutSeconds: 5`,

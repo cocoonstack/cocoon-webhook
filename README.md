@@ -1,36 +1,21 @@
 # cocoon-webhook
 
-Kubernetes admission webhook for the [cocoonstack](https://github.com/cocoonstack) VM platform.
-
-cocoon-webhook hosts four admission endpoints: a mutating webhook that
-rejects cocoon-tolerated pods (bearing the `virtual-kubelet.io/provider`
-toleration) not created by the CocoonSet controller, a validating
-webhook that rejects scale-down on cocoon-tolerated Deployments/
-StatefulSets, a validating webhook that enforces CocoonSet cross-field
-business rules the CRD's OpenAPI schema can't express, and a validating
-webhook that pins each pod to at most one live CocoonHibernation.
+Kubernetes admission webhook for the [cocoonstack](https://github.com/cocoonstack)
+VM platform, enforcing controller ownership and lifecycle constraints before
+resources reach the VM controllers.
 
 **Documentation: [cocoonstack.github.io/cocoon-webhook](https://cocoonstack.github.io/cocoon-webhook/)** (source in [`docs/`](docs/)).
 
-## Documentation
+## Highlights
 
-- [Overview](docs/overview.md) — the admission endpoints and what each one does
-- [Validation rules](docs/validation.md) — the cross-field business rules enforced on CocoonSet CREATE/UPDATE and on CocoonHibernation CREATE
-- [Configuration](docs/configuration.md) — every environment variable
-- [Installation](docs/installation.md) — the `kubectl apply -k` path and building from source
-
-## Development
-
-```bash
-make all            # full pipeline: deps + fmt + lint + test + build
-make build          # build cocoon-webhook binary
-make test           # vet + race-detected tests
-make lint           # golangci-lint on linux + darwin
-make fmt            # gofumpt + goimports
-make help           # show all targets
-```
-
-The Makefile detects Go workspace mode (`go env GOWORK`) and skips `go mod tidy` when active so cross-module references resolve through `go.work` without forcing a release of cocoon-common.
+- Pods entering the cocoon gate through the `virtual-kubelet.io/provider`
+  toleration or the `vm.cocoonstack.io/name` annotation require a CocoonSet owner
+  and an allowlisted requester. This applies on CREATE and on UPDATE from outside
+  the gate; updates to already gated Pods remain allowed.
+- Scale-down is blocked on cocoon-tolerated Deployments and StatefulSets.
+- CocoonSet validation checks cross-field rules and reserves room for derived
+  snapshot names before a VM is created.
+- CocoonHibernation validation allows at most one live object per Pod.
 
 ## Related projects
 
@@ -38,8 +23,16 @@ The Makefile detects Go workspace mode (`go env GOWORK`) and skips `go mod tidy`
 |---|---|
 | [cocoon-common](https://github.com/cocoonstack/cocoon-common) | CRD types, annotation contract, shared helpers |
 | [cocoon-operator](https://github.com/cocoonstack/cocoon-operator) | CocoonSet and CocoonHibernation reconcilers |
-| [epoch](https://github.com/cocoonstack/epoch) | Snapshot registry and storage backend |
 | [vk-cocoon](https://github.com/cocoonstack/vk-cocoon) | Virtual kubelet provider managing VM lifecycle |
+
+## Development
+
+```bash
+make build          # build cocoon-webhook binary
+make test           # vet + race-detected tests
+make lint           # golangci-lint on linux + darwin
+make fmt            # gofumpt + goimports
+```
 
 ## License
 

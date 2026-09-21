@@ -16,9 +16,10 @@ import (
 )
 
 // podShape is the narrow slice of a Pod this hook reads: it fires for every
-// pod created cluster-wide, so skip decoding containers/volumes/probes.
+// pod write cluster-wide, so skip decoding containers/volumes/probes.
 type podShape struct {
 	Metadata struct {
+		Annotations     map[string]string       `json:"annotations"`
 		OwnerReferences []metav1.OwnerReference `json:"ownerReferences"`
 	} `json:"metadata"`
 	Spec struct {
@@ -37,25 +38,39 @@ func (s *Server) mutatePod(ctx context.Context, review *admissionv1.AdmissionRev
 	var pod podShape
 	if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
 		// Bad client input — apiserver will reject it anyway, so fail open.
-		log.WithFunc("mutatePod").Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
+		log.WithFunc("admission.mutatePod").Warnf(ctx, "decode pod %s/%s: %v", req.Namespace, req.Name, err)
 		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonDecode)
 	}
 
-	if !meta.HasCocoonTolerationKey(pod.Spec.Tolerations) {
+	if !gatedPod(pod) {
 		return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonNotCocoon)
+	}
+	if req.Operation == admissionv1.Update {
+		var old podShape
+		if err := json.Unmarshal(req.OldObject.Raw, &old); err != nil {
+			log.WithFunc("admission.mutatePod").Warnf(ctx, "decode old pod %s/%s: %v", req.Namespace, req.Name, err)
+			return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonDecode)
+		}
+		if gatedPod(old) {
+			return recordAllow(metrics.HandlerMutate, metrics.ResultSkipped, metrics.ReasonNoChange)
+		}
 	}
 
 	if !meta.IsOwnedByCocoonSet(pod.Metadata.OwnerReferences) {
-		log.WithFunc("mutatePod").Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
+		log.WithFunc("admission.mutatePod").Warnf(ctx, "deny bare cocoon pod %s/%s: not owned by CocoonSet", req.Namespace, req.Name)
 		return recordDeny(metrics.HandlerMutate, metrics.ResultDeny, "", "cocoon pods must be managed by a CocoonSet")
 	}
 
 	// Owner references are client-settable and unverified by the apiserver;
 	// the authenticated requester is the only unforgeable signal.
 	if !slices.Contains(s.podCreators, req.UserInfo.Username) {
-		log.WithFunc("mutatePod").Warnf(ctx, "deny cocoon pod %s/%s: creator %q is not an allowed controller", req.Namespace, req.Name, req.UserInfo.Username)
+		log.WithFunc("admission.mutatePod").Warnf(ctx, "deny cocoon pod %s/%s: creator %q is not an allowed controller", req.Namespace, req.Name, req.UserInfo.Username)
 		return recordDeny(metrics.HandlerMutate, metrics.ResultDeny, "", fmt.Sprintf("cocoon pods must be created by the CocoonSet controller, got user %q", req.UserInfo.Username))
 	}
 
 	return recordAllow(metrics.HandlerMutate, metrics.ResultAllow, "")
+}
+
+func gatedPod(pod podShape) bool {
+	return meta.HasCocoonTolerationKey(pod.Spec.Tolerations) || pod.Metadata.Annotations[meta.AnnotationVMName] != ""
 }
