@@ -17,12 +17,22 @@ It hosts four admission endpoints plus health and metrics surfaces:
 | `GET /metrics` | Prometheus | — | Plain HTTP on `:9090`, separate from the admission TLS port. Exposes `cocoon_webhook_admission_total{handler,result,reason}`, with `handler ∈ {mutate, validate, validate_cocoonset, validate_cocoonhibernation}` and `result ∈ {allow, deny, error, skipped}`. |
 
 The `/mutate` and `/validate` registrations carry a `namespaceSelector` that
-excludes `kube-system`, `kube-node-lease`, `kube-public`, `cocoon-system` and
-`cert-manager`, so a webhook outage under `failurePolicy: Fail` cannot block
-the pods those namespaces need to recover (the webhook's own included). The
+excludes `kube-system`, `kube-node-lease`, `kube-public`, `cocoon-system`,
+`cert-manager` and `sandbox-system`, so a webhook outage under
+`failurePolicy: Fail` cannot block the pods those namespaces need to recover
+(the webhook's own included). The
 flip side: a cocoon-tolerated pod or workload placed in one of them is neither
 gated at creation nor protected against scale-down. Cocoon workloads belong in
-ordinary namespaces. The `/validate-cocoonset` and `/validate-cocoonhibernation`
+ordinary namespaces.
+
+`sandbox-system` is excluded for a different reason. The pod gate keys on the
+`virtual-kubelet.io/provider` toleration *key*, and a pod that tolerates a
+virtual-kubelet taint with `operator: Exists` carries no value to match on, so
+every virtual-kubelet provider's pods look like cocoon VM pods here. vk-sandbox
+taints its node with that key and value `sandboxd`, and sandbox-operator's pods
+have no CocoonSet owner, so without this exclusion every sandboxd-runtime
+Sandbox is denied. Any further provider sharing the key needs the same
+treatment. The `/validate-cocoonset` and `/validate-cocoonhibernation`
 registrations carry no `namespaceSelector` and gate every namespace, including
 `cocoon-system`.
 
