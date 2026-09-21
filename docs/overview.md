@@ -1,9 +1,10 @@
 # Overview
 
-cocoon-webhook is a Kubernetes admission webhook that enforces cocoon
-sticky scheduling and validates [CocoonSet](https://github.com/cocoonstack/cocoon-common)
-resources beyond what the CRD's OpenAPI schema can express. It hosts
-four admission endpoints plus health and metrics surfaces:
+cocoon-webhook is a Kubernetes admission webhook that admits VM-backed pods
+only from the CocoonSet controller, rejects scale-down of cocoon workloads,
+and validates [CocoonSet](https://github.com/cocoonstack/cocoon-common) and
+CocoonHibernation resources beyond what the CRD's OpenAPI schema can express.
+It hosts four admission endpoints plus health and metrics surfaces:
 
 | Endpoint | Type | Resources | What it does |
 |---|---|---|---|

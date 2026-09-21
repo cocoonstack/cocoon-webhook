@@ -1,11 +1,11 @@
 # cocoon-webhook
 
 Kubernetes admission webhook for the
-[cocoonstack](https://github.com/cocoonstack) VM platform. It enforces
-cocoon sticky scheduling on Pod, Deployment, and StatefulSet admission,
-validates CocoonSet CRs against cross-field business rules the CRD's
-OpenAPI schema cannot express, and pins each pod to at most one live
-CocoonHibernation.
+[cocoonstack](https://github.com/cocoonstack) VM platform. It admits
+VM-backed pods only from the CocoonSet controller, rejects scale-down of
+cocoon Deployments and StatefulSets, validates CocoonSet CRs against
+cross-field business rules the CRD's OpenAPI schema cannot express, and
+pins each pod to at most one live CocoonHibernation.
 
 ## Guides
 
