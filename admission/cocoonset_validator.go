@@ -200,10 +200,7 @@ func cloneImageError(path, mode, image string) string {
 
 // firecrackerModeError rejects firecracker with mode != run: an FC restore freezes the guest MAC+IP, so clones land on a dead lease.
 func firecrackerModeError(path string, backend cocoonv1.Backend, mode string) string {
-	if backend.Default() != cocoonv1.BackendFirecracker {
-		return ""
-	}
-	if mode == string(cocoonv1.AgentModeRun) {
+	if backend.Default() != cocoonv1.BackendFirecracker || mode == string(cocoonv1.AgentModeRun) {
 		return ""
 	}
 	return fmt.Sprintf("%s: firecracker does not support %s mode, use mode=run instead", path, mode)
