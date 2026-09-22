@@ -23,7 +23,7 @@ webhooks:
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: NotIn
-          values: ["kube-system", "kube-node-lease", "kube-public", "cocoon-system", "cert-manager"]
+          values: ["kube-system", "kube-node-lease", "kube-public", "cocoon-system", "cert-manager", "sandbox-system"]
     rules:
       - apiGroups: [""]
         apiVersions: ["v1"]
@@ -53,7 +53,7 @@ webhooks:
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: NotIn
-          values: ["kube-system", "kube-node-lease", "kube-public", "cocoon-system", "cert-manager"]
+          values: ["kube-system", "kube-node-lease", "kube-public", "cocoon-system", "cert-manager", "sandbox-system"]
     rules:
       # `deployments` / `statefulsets` covers `kubectl edit`, `kubectl patch`,
       # and direct PUT/PATCH on the parent. `kubectl scale --replicas=N`
