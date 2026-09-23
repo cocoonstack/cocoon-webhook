@@ -12,10 +12,8 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
     verbs: ["get"]
-  # CocoonHibernation CREATE validation lists existing CRs in the namespace
-  # to enforce one live CR per pod.
   - apiGroups: ["cocoonset.cocoonstack.io"]
-    resources: ["cocoonhibernations"]
+    resources: ["cocoonhibernations", "cocoonsets"]
     verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
