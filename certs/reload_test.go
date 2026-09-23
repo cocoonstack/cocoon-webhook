@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -18,11 +19,11 @@ func TestReloaderInitialLoad(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
 
-	r, err := NewReloader(t.Context(), certPath, keyPath)
+	r, err := NewReloader(certPath, keyPath)
 	if err != nil {
 		t.Fatalf("NewReloader: %v", err)
 	}
-	cert, err := r.GetCertificate(nil)
+	cert, err := r.GetCertificate(&tls.ClientHelloInfo{})
 	if err != nil {
 		t.Fatalf("GetCertificate: %v", err)
 	}
@@ -36,7 +37,7 @@ func TestReloaderPicksUpRotation(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
 
-	r, err := NewReloader(t.Context(), certPath, keyPath)
+	r, err := NewReloader(certPath, keyPath)
 	if err != nil {
 		t.Fatalf("NewReloader: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestReloaderPicksUpRotation(t *testing.T) {
 		t.Fatalf("chtimes key: %v", err)
 	}
 
-	cert, err := r.GetCertificate(nil)
+	cert, err := r.GetCertificate(&tls.ClientHelloInfo{})
 	if err != nil {
 		t.Fatalf("GetCertificate after rotation: %v", err)
 	}
@@ -64,7 +65,7 @@ func TestReloaderServesStaleOnReloadFailure(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath := writeKeypair(t, dir, "first")
 
-	r, err := NewReloader(t.Context(), certPath, keyPath)
+	r, err := NewReloader(certPath, keyPath)
 	if err != nil {
 		t.Fatalf("NewReloader: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestReloaderServesStaleOnReloadFailure(t *testing.T) {
 		t.Fatalf("chtimes cert: %v", err)
 	}
 
-	cert, err := r.GetCertificate(nil)
+	cert, err := r.GetCertificate(&tls.ClientHelloInfo{})
 	if err != nil {
 		t.Fatalf("GetCertificate: %v", err)
 	}

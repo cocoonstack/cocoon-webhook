@@ -48,7 +48,7 @@ func main() {
 	listen := commonk8s.EnvOrDefault("LISTEN_ADDR", defaultListen)
 	metricsListen := commonk8s.EnvOrDefault("METRICS_ADDR", defaultMetricsListen)
 
-	reloader, err := certs.NewReloader(ctx, certFile, keyFile)
+	reloader, err := certs.NewReloader(certFile, keyFile)
 	if err != nil {
 		logger.Fatalf(ctx, err, "load TLS keypair")
 	}
