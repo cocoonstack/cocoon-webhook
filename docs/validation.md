@@ -34,10 +34,10 @@ whole 63 characters.
 This also leaves room for the shorter `fork-` snapshot prefix. Validation uses
 the naming functions from cocoon-common:
 
-- Agents use `vk-<namespace>-<cocoonset>-<slot>`. The main agent occupies slot 0;
+- Agents use `vk-<namespace>.<cocoonset>-<slot>`. The main agent occupies slot 0;
   `spec.agent.replicas` counts additional agents in slots 1 through that value.
   The validator checks the largest slot, including its decimal digit count.
-- Non-static toolboxes use `vk-<namespace>-<cocoonset>-<toolbox-name>` and have
+- Non-static toolboxes use `vk-<namespace>.<cocoonset>-<toolbox-name>` and have
   the same budget. Static toolboxes use external VMs and skip this local VM
   name check; their existing name and connection checks still apply.
 
