@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -9,6 +10,9 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
 )
@@ -435,4 +439,88 @@ func TestValidateCocoonSetRejectsOversizedToolboxModeChange(t *testing.T) {
 	if resp.Allowed || resp.Result == nil || !strings.Contains(resp.Result.Message, "spec.toolboxes[0] derives VM name") {
 		t.Errorf("want toolbox name-budget denial, got %+v", resp)
 	}
+}
+
+func TestValidateCocoonSetRejectsVMNameCollisions(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing *cocoonv1.CocoonSet
+		old      *cocoonv1.CocoonSet
+		incoming *cocoonv1.CocoonSet
+		wantDeny string
+	}{
+		{
+			name:     "cross-namespace agent names",
+			existing: cocoonSet("team-a", "dev", 0),
+			incoming: cocoonSet("team", "a-dev", 0),
+			wantDeny: `"vk-team-a-dev-0" collides with CocoonSet team-a/dev`,
+		},
+		{
+			name:     "agent slot against a toolbox in the same namespace",
+			existing: cocoonSet("a", "b-c", 2),
+			incoming: withToolbox(cocoonSet("a", "b", 0), "c-2"),
+			wantDeny: `"vk-a-b-c-2" collides with CocoonSet a/b-c`,
+		},
+		{
+			name:     "distinct names",
+			existing: cocoonSet("team-a", "dev", 0),
+			incoming: cocoonSet("team-b", "dev", 0),
+		},
+		{
+			name:     "update of the same CocoonSet",
+			existing: cocoonSet("team-a", "dev", 0),
+			old:      cocoonSet("team-a", "dev", 0),
+			incoming: cocoonSet("team-a", "dev", 1),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := newTestServer(t, tt.existing).validateCocoonSet(t.Context(), cocoonSetReview(t, tt.old, tt.incoming))
+			if tt.wantDeny == "" {
+				if !resp.Allowed {
+					t.Fatalf("distinct VM names denied: %v", resp.Result)
+				}
+				return
+			}
+			if resp.Allowed || resp.Result == nil || !strings.Contains(resp.Result.Message, tt.wantDeny) {
+				t.Errorf("want denial containing %q, got %+v", tt.wantDeny, resp)
+			}
+		})
+	}
+}
+
+func TestValidateCocoonSetFailsClosedWhenListingCocoonSetsFails(t *testing.T) {
+	srv := newTestServer(t)
+	srv.dyn.(*dynamicfake.FakeDynamicClient).PrependReactor("list", "cocoonsets", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("apiserver unavailable")
+	})
+	resp := srv.validateCocoonSet(t.Context(), cocoonSetReview(t, nil, cocoonSet("team-a", "dev", 0)))
+	if resp.Allowed || resp.Result == nil || !strings.Contains(resp.Result.Message, "cannot verify VM name uniqueness") {
+		t.Errorf("list error should fail closed, got %+v", resp)
+	}
+}
+
+func cocoonSet(namespace, name string, replicas int32) *cocoonv1.CocoonSet {
+	return &cocoonv1.CocoonSet{
+		TypeMeta:   metav1.TypeMeta{APIVersion: cocoonv1.GroupVersion.String(), Kind: "CocoonSet"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
+		Spec:       cocoonv1.CocoonSetSpec{Agent: cocoonv1.AgentSpec{Image: "ubuntu:v1", Replicas: replicas}},
+	}
+}
+
+func withToolbox(cs *cocoonv1.CocoonSet, name string) *cocoonv1.CocoonSet {
+	cs.Spec.Toolboxes = append(cs.Spec.Toolboxes, cocoonv1.ToolboxSpec{Name: name, Image: "tools:v1"})
+	return cs
+}
+
+func cocoonSetReview(t *testing.T, old, cs *cocoonv1.CocoonSet) *admissionv1.AdmissionReview {
+	t.Helper()
+	review := buildUpdateReview(t, "CocoonSet", old, cs)
+	review.Request.Kind.Group = cocoonv1.GroupVersion.Group
+	review.Request.Namespace, review.Request.Name = cs.Namespace, cs.Name
+	if old == nil {
+		review.Request.Operation = admissionv1.Create
+		review.Request.OldObject.Raw = nil
+	}
+	return review
 }

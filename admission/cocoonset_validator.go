@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/projecteru2/core/log"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
@@ -22,6 +25,8 @@ const (
 	maxVMNameLength        = 63
 	maxManagedVMNameLength = maxVMNameLength - len("-hibernate-import")
 )
+
+var cocoonSetGVR = cocoonv1.GroupVersion.WithResource("cocoonsets")
 
 func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	logger := log.WithFunc("admission.validateCocoonSet")
@@ -49,7 +54,36 @@ func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.Admi
 	if errs := validateCocoonSetSpec(&cs); len(errs) > 0 {
 		return denyf(ctx, logger, metrics.HandlerValidateCocoonSet, req, "cocoon-webhook: invalid CocoonSet spec: "+strings.Join(errs, "; "))
 	}
+	if resp := s.denyVMNameCollision(ctx, logger, req, &cs); resp != nil {
+		return resp
+	}
 	return recordAllow(metrics.HandlerValidateCocoonSet, metrics.ResultAllow, "")
+}
+
+// denyVMNameCollision lists every namespace: VM names join namespace and name with a plain hyphen, so team-a/dev and team/a-dev derive the same VM.
+func (s *Server) denyVMNameCollision(ctx context.Context, logger *log.Fields, req *admissionv1.AdmissionRequest, cs *cocoonv1.CocoonSet) *admissionv1.AdmissionResponse {
+	existing, err := s.dyn.Resource(cocoonSetGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		logger.Errorf(ctx, err, "list cocoonsets")
+		return recordDeny(metrics.HandlerValidateCocoonSet, metrics.ResultError, metrics.ReasonList, fmt.Sprintf("cocoon-webhook: cannot verify VM name uniqueness: %v", err))
+	}
+	mine := derivedVMNames(cs)
+	for i := range existing.Items {
+		var other cocoonv1.CocoonSet
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(existing.Items[i].Object, &other); err != nil {
+			logger.Errorf(ctx, err, "decode cocoonset %s/%s", existing.Items[i].GetNamespace(), existing.Items[i].GetName())
+			return recordDeny(metrics.HandlerValidateCocoonSet, metrics.ResultError, metrics.ReasonDecode, fmt.Sprintf("cocoon-webhook: cannot verify VM name uniqueness: %v", err))
+		}
+		if other.Namespace == cs.Namespace && other.Name == cs.Name {
+			continue
+		}
+		theirs := derivedVMNames(&other)
+		hit := slices.IndexFunc(mine, func(name string) bool { return slices.Contains(theirs, name) })
+		if hit >= 0 {
+			return denyf(ctx, logger, metrics.HandlerValidateCocoonSet, req, fmt.Sprintf("cocoon-webhook: derived VM name %q collides with CocoonSet %s/%s", mine[hit], other.Namespace, other.Name))
+		}
+	}
+	return nil
 }
 
 func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
@@ -204,4 +238,15 @@ func firecrackerModeError(path string, backend cocoonv1.Backend, mode string) st
 		return ""
 	}
 	return fmt.Sprintf("%s: firecracker does not support %s mode, use mode=run instead", path, mode)
+}
+
+func derivedVMNames(cs *cocoonv1.CocoonSet) []string {
+	names := make([]string, 0, int(cs.Spec.Agent.Replicas)+1+len(cs.Spec.Toolboxes))
+	for slot := range max(0, int(cs.Spec.Agent.Replicas)) + 1 {
+		names = append(names, meta.VMNameForDeployment(cs.Namespace, cs.Name, slot))
+	}
+	for _, tb := range cs.Spec.Toolboxes {
+		names = append(names, meta.VMNameForPod(cs.Namespace, cs.Name+"-"+tb.Name))
+	}
+	return names
 }

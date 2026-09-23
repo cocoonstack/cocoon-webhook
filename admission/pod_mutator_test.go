@@ -12,8 +12,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 
+	cocoonv1 "github.com/cocoonstack/cocoon-common/apis/v1"
 	"github.com/cocoonstack/cocoon-common/meta"
 	"github.com/cocoonstack/cocoon-webhook/metrics"
 )
@@ -181,10 +183,13 @@ func TestMutatePodRecordsExactlyOneSample(t *testing.T) {
 	}
 }
 
-func newTestServer(t *testing.T) *Server {
+func newTestServer(t *testing.T, objs ...runtime.Object) *Server {
 	t.Helper()
-	client := fake.NewSimpleClientset()
-	return NewServer(client, nil, []string{testPodCreator})
+	scheme := runtime.NewScheme()
+	if err := cocoonv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add scheme: %v", err)
+	}
+	return NewServer(fake.NewSimpleClientset(), dynamicfake.NewSimpleDynamicClient(scheme, objs...), []string{testPodCreator})
 }
 
 func collectAdmission(t *testing.T) (series int, total float64) {
