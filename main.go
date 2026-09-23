@@ -1,5 +1,4 @@
-// Package main is the cocoon-webhook entry point. The webhook handles
-// admission review for cocoon pods, workloads, and CocoonSet CRs.
+// Package main is the cocoon-webhook entry point.
 package main
 
 import (

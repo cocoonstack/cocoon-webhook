@@ -18,7 +18,6 @@ import (
 )
 
 // validateWorkload rejects scale-down on cocoon workloads (stateful VMs).
-// Handles both direct UPDATE and /scale subresource requests.
 func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	req := review.Request
 	if req.Operation != admissionv1.Update {
@@ -35,8 +34,7 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 	}
 }
 
-// validateScaleSubresource fetches the parent workload to check tolerations:
-// fail-closed on apiserver errors, fail-open on malformed Scale payloads.
+// validateScaleSubresource fetches the parent workload for its tolerations and fails closed on apiserver errors.
 func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	var oldScale, newScale autoscalingv1.Scale
 	if !decodeUpdatePair(ctx, req, &oldScale, &newScale) {
@@ -106,8 +104,7 @@ func validateWorkloadScaleDown(ctx context.Context, req *admissionv1.AdmissionRe
 	return checkScaleDown(ctx, req, ptr.Deref(oldObj.Spec.Replicas, 1), ptr.Deref(newObj.Spec.Replicas, 1))
 }
 
-// decodeUpdatePair decodes req.OldObject and req.Object, returning false on
-// malformed payloads so callers fail open (apiserver rejects those anyway).
+// decodeUpdatePair returns false on a malformed payload so callers fail open; the apiserver rejects it anyway.
 func decodeUpdatePair(ctx context.Context, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
 	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {
 		log.WithFunc("admission.decodeUpdatePair").Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
