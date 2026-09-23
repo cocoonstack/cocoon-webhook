@@ -39,7 +39,7 @@ func (s *Server) validateWorkload(ctx context.Context, review *admissionv1.Admis
 // fail-closed on apiserver errors, fail-open on malformed Scale payloads.
 func (s *Server) validateScaleSubresource(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	var oldScale, newScale autoscalingv1.Scale
-	if !decodeUpdatePair(ctx, "validateScaleSubresource", req, &oldScale, &newScale) {
+	if !decodeUpdatePair(ctx, req, &oldScale, &newScale) {
 		return recordAllow(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 	}
 
@@ -97,7 +97,7 @@ type workloadShape struct {
 
 func validateWorkloadScaleDown(ctx context.Context, req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
 	var oldObj, newObj workloadShape
-	if !decodeUpdatePair(ctx, "validateWorkloadScaleDown", req, &oldObj, &newObj) {
+	if !decodeUpdatePair(ctx, req, &oldObj, &newObj) {
 		return recordAllow(metrics.HandlerValidate, metrics.ResultSkipped, metrics.ReasonDecode)
 	}
 	if !meta.HasCocoonTolerationKey(oldObj.Spec.Template.Spec.Tolerations) {
@@ -108,13 +108,13 @@ func validateWorkloadScaleDown(ctx context.Context, req *admissionv1.AdmissionRe
 
 // decodeUpdatePair decodes req.OldObject and req.Object, returning false on
 // malformed payloads so callers fail open (apiserver rejects those anyway).
-func decodeUpdatePair(ctx context.Context, fn string, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
+func decodeUpdatePair(ctx context.Context, req *admissionv1.AdmissionRequest, oldObj, newObj any) bool {
 	if err := json.Unmarshal(req.OldObject.Raw, oldObj); err != nil {
-		log.WithFunc(fn).Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
+		log.WithFunc("admission.decodeUpdatePair").Warnf(ctx, "decode old %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
 		return false
 	}
 	if err := json.Unmarshal(req.Object.Raw, newObj); err != nil {
-		log.WithFunc(fn).Warnf(ctx, "decode new %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
+		log.WithFunc("admission.decodeUpdatePair").Warnf(ctx, "decode new %s %s/%s: %v", req.Kind.Kind, req.Namespace, req.Name, err)
 		return false
 	}
 	return true
