@@ -43,10 +43,7 @@ func (s *Server) Routes() http.Handler {
 }
 
 func okHandler(body string) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(body))
-	}
+	return func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }
 }
 
 func admit(handler commonadmission.Handler) http.HandlerFunc {
