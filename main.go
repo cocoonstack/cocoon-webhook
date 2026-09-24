@@ -1,5 +1,4 @@
-// Package main is the cocoon-webhook entry point. The webhook handles
-// admission review for cocoon pods, workloads, and CocoonSet CRs.
+// Package main is the cocoon-webhook entry point.
 package main
 
 import (
@@ -48,7 +47,7 @@ func main() {
 	listen := commonk8s.EnvOrDefault("LISTEN_ADDR", defaultListen)
 	metricsListen := commonk8s.EnvOrDefault("METRICS_ADDR", defaultMetricsListen)
 
-	reloader, err := certs.NewReloader(ctx, certFile, keyFile)
+	reloader, err := certs.NewReloader(certFile, keyFile)
 	if err != nil {
 		logger.Fatalf(ctx, err, "load TLS keypair")
 	}

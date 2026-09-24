@@ -333,19 +333,19 @@ func TestValidateCocoonSetNameBudget(t *testing.T) {
 		wantField     string
 		wantMax       int
 	}{
-		{name: "main snapshot fits exactly", namespaceSize: 7, setSize: 33},
-		{name: "main snapshot exceeds by one", namespaceSize: 7, setSize: 34, wantField: "spec.agent", wantMax: 46},
-		{name: "long namespace fits exactly", namespaceSize: 24, setSize: 16},
-		{name: "long namespace exceeds by one", namespaceSize: 24, setSize: 17, wantField: "spec.agent", wantMax: 46},
-		{name: "slot nine fits", namespaceSize: 7, setSize: 33, replicas: 9},
-		{name: "slot ten exceeds", namespaceSize: 7, setSize: 33, replicas: 10, wantField: "spec.agent", wantMax: 46},
-		{name: "macos main has the whole engine limit", namespaceSize: 7, setSize: 50, os: cocoonv1.OSMacos},
-		{name: "macos main exceeds the engine limit", namespaceSize: 7, setSize: 51, os: cocoonv1.OSMacos, wantField: "spec.agent", wantMax: 63},
-		{name: "toolbox snapshot fits exactly", namespaceSize: 7, setSize: 4, toolboxSize: 30},
-		{name: "toolbox snapshot exceeds by one", namespaceSize: 7, setSize: 4, toolboxSize: 31, wantField: "spec.toolboxes[0]", wantMax: 46},
-		{name: "clone toolbox snapshot exceeds", namespaceSize: 7, setSize: 4, toolboxSize: 31, toolboxMode: cocoonv1.ToolboxModeClone, wantField: "spec.toolboxes[0]", wantMax: 46},
-		{name: "macos toolbox has the whole engine limit", namespaceSize: 7, setSize: 4, toolboxSize: 47, os: cocoonv1.OSMacos},
-		{name: "macos toolbox exceeds the engine limit", namespaceSize: 7, setSize: 4, toolboxSize: 48, os: cocoonv1.OSMacos, wantField: "spec.toolboxes[0]", wantMax: 63},
+		{name: "main snapshot fits exactly", namespaceSize: 7, setSize: 26},
+		{name: "main snapshot exceeds by one", namespaceSize: 7, setSize: 27, wantField: "spec.agent", wantMax: 46},
+		{name: "long namespace fits exactly", namespaceSize: 24, setSize: 9},
+		{name: "long namespace exceeds by one", namespaceSize: 24, setSize: 10, wantField: "spec.agent", wantMax: 46},
+		{name: "slot nine fits", namespaceSize: 7, setSize: 26, replicas: 9},
+		{name: "slot ten exceeds", namespaceSize: 7, setSize: 26, replicas: 10, wantField: "spec.agent", wantMax: 46},
+		{name: "macos main has the whole engine limit", namespaceSize: 7, setSize: 43, os: cocoonv1.OSMacos},
+		{name: "macos main exceeds the engine limit", namespaceSize: 7, setSize: 44, os: cocoonv1.OSMacos, wantField: "spec.agent", wantMax: 63},
+		{name: "toolbox snapshot fits exactly", namespaceSize: 7, setSize: 4, toolboxSize: 23},
+		{name: "toolbox snapshot exceeds by one", namespaceSize: 7, setSize: 4, toolboxSize: 24, wantField: "spec.toolboxes[0]", wantMax: 46},
+		{name: "clone toolbox snapshot exceeds", namespaceSize: 7, setSize: 4, toolboxSize: 24, toolboxMode: cocoonv1.ToolboxModeClone, wantField: "spec.toolboxes[0]", wantMax: 46},
+		{name: "macos toolbox has the whole engine limit", namespaceSize: 7, setSize: 4, toolboxSize: 40, os: cocoonv1.OSMacos},
+		{name: "macos toolbox exceeds the engine limit", namespaceSize: 7, setSize: 4, toolboxSize: 41, os: cocoonv1.OSMacos, wantField: "spec.toolboxes[0]", wantMax: 63},
 		{name: "static toolbox has no managed snapshot", namespaceSize: 7, setSize: 4, toolboxSize: 63, toolboxMode: cocoonv1.ToolboxModeStatic},
 	}
 	for _, tt := range tests {
@@ -386,10 +386,10 @@ func TestValidateCocoonSetNameBudgetOnUpdate(t *testing.T) {
 		newReplicas int32
 		wantAllowed bool
 	}{
-		{name: "scaling within one digit", setSize: 33, oldReplicas: 0, newReplicas: 9, wantAllowed: true},
-		{name: "scaling to slot ten", setSize: 33, oldReplicas: 9, newReplicas: 10},
-		{name: "repairing slot budget", setSize: 33, oldReplicas: 10, newReplicas: 9, wantAllowed: true},
-		{name: "legacy finalizer removal", setSize: 34, wantAllowed: true},
+		{name: "scaling within one digit", setSize: 26, oldReplicas: 0, newReplicas: 9, wantAllowed: true},
+		{name: "scaling to slot ten", setSize: 26, oldReplicas: 9, newReplicas: 10},
+		{name: "repairing slot budget", setSize: 26, oldReplicas: 10, newReplicas: 9, wantAllowed: true},
+		{name: "legacy finalizer removal", setSize: 27, wantAllowed: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

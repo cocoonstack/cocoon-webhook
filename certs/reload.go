@@ -3,7 +3,6 @@
 package certs
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"os"
@@ -15,7 +14,6 @@ import (
 
 // Reloader re-reads the keypair when either file's mtime changes and keeps the stale cert on a reload error.
 type Reloader struct {
-	ctx      context.Context // GetCertificate takes no ctx; logging only
 	certFile string
 	keyFile  string
 
@@ -25,8 +23,8 @@ type Reloader struct {
 }
 
 // NewReloader loads the initial keypair and returns a Reloader.
-func NewReloader(ctx context.Context, certFile, keyFile string) (*Reloader, error) {
-	r := &Reloader{ctx: ctx, certFile: certFile, keyFile: keyFile}
+func NewReloader(certFile, keyFile string) (*Reloader, error) {
+	r := &Reloader{certFile: certFile, keyFile: keyFile}
 	if err := r.load(); err != nil {
 		return nil, err
 	}
@@ -34,10 +32,10 @@ func NewReloader(ctx context.Context, certFile, keyFile string) (*Reloader, erro
 }
 
 // GetCertificate stats both files per handshake; concurrent reloads during a rotation are tolerated to keep readers on RLock.
-func (r *Reloader) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (r *Reloader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if r.mtimeChanged() {
 		if err := r.load(); err != nil {
-			log.WithFunc("certs.Reloader.GetCertificate").Error(r.ctx, err, "reload TLS keypair, serving stale cert")
+			log.WithFunc("certs.Reloader.GetCertificate").Error(hello.Context(), err, "reload TLS keypair, serving stale cert")
 		}
 	}
 	r.mu.RLock()

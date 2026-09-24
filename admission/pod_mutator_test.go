@@ -103,7 +103,7 @@ func TestMutatePodDeniesBareVMPodWithoutToleration(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "rogue",
 			Namespace:   "tenant",
-			Annotations: map[string]string{meta.AnnotationVMName: "vk-tenant.rogue"},
+			Annotations: map[string]string{meta.AnnotationVMName: "vk-tenant-rogue-936dab"},
 		},
 		Spec: corev1.PodSpec{NodeName: "cocoon-pool-node-1"},
 	}
@@ -118,7 +118,7 @@ func TestMutatePodDeniesVMPodFromOtherCreatorWithoutToleration(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "rogue",
 			Namespace:       "tenant",
-			Annotations:     map[string]string{meta.AnnotationVMName: "vk-tenant.rogue"},
+			Annotations:     map[string]string{meta.AnnotationVMName: "vk-tenant-rogue-936dab"},
 			OwnerReferences: []metav1.OwnerReference{{Kind: meta.KindCocoonSet, Name: "demo"}},
 		},
 		Spec: corev1.PodSpec{NodeName: "cocoon-pool-node-1"},
@@ -139,7 +139,7 @@ func TestMutatePodUpdateDeniesAPodThatEntersTheGate(t *testing.T) {
 			pod.Spec.Tolerations = []corev1.Toleration{{Key: meta.TolerationKey, Operator: corev1.TolerationOpExists}}
 		},
 		"vm name added": func(pod *corev1.Pod) {
-			pod.Annotations = map[string]string{meta.AnnotationVMName: "vk-tenant.rogue"}
+			pod.Annotations = map[string]string{meta.AnnotationVMName: "vk-tenant-rogue-936dab"}
 		},
 	} {
 		updated := old.DeepCopy()
@@ -155,7 +155,7 @@ func TestMutatePodUpdateDeniesAPodThatEntersTheGate(t *testing.T) {
 func TestMutatePodUpdateSkipsAPodAlreadyInTheGate(t *testing.T) {
 	srv := newTestServer(t)
 	old := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: "demo-0", Namespace: "ns", Annotations: map[string]string{meta.AnnotationVMName: "vk-ns.demo-0"}},
+		ObjectMeta: metav1.ObjectMeta{Name: "demo-0", Namespace: "ns", Annotations: map[string]string{meta.AnnotationVMName: "vk-ns-demo-0-505043"}},
 		Spec:       corev1.PodSpec{Tolerations: []corev1.Toleration{{Key: meta.TolerationKey}}},
 	}
 	updated := old.DeepCopy()

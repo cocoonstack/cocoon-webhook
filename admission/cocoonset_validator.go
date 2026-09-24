@@ -20,7 +20,7 @@ import (
 
 const (
 	maxVMNameLength        = 63
-	maxManagedVMNameLength = maxVMNameLength - len("-hibernate-import")
+	maxManagedVMNameLength = maxVMNameLength - len(meta.HibernateImportSuffix)
 )
 
 func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
@@ -56,9 +56,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	var errs []string
 
 	vmName := meta.VMNameForDeployment(cs.Namespace, cs.Name, max(0, int(cs.Spec.Agent.Replicas)))
-	if msg := vmNameLengthError("spec.agent", vmName, cs.Spec.Agent.OS); msg != "" {
-		errs = append(errs, msg)
-	}
+	errs = appendMsgs(errs, vmNameLengthError("spec.agent", vmName, cs.Spec.Agent.OS))
 	if cs.Spec.Agent.Image == "" {
 		errs = append(errs, "spec.agent.image is required")
 	}
@@ -70,12 +68,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 	}
 	errs = append(errs, validateVMOptions("spec.agent", cs.Spec.Agent.VMOptions, cs.Spec.Agent.Image)...)
 	agentMode := string(cs.Spec.Agent.Mode.Default())
-	if msg := firecrackerModeError("spec.agent", cs.Spec.Agent.Backend, agentMode); msg != "" {
-		errs = append(errs, msg)
-	}
-	if msg := cloneImageError("spec.agent", agentMode, cs.Spec.Agent.Image); msg != "" {
-		errs = append(errs, msg)
-	}
+	errs = appendMsgs(errs, firecrackerModeError("spec.agent", cs.Spec.Agent.Backend, agentMode), cloneImageError("spec.agent", agentMode, cs.Spec.Agent.Image))
 
 	seen := map[string]struct{}{}
 	agentBackend := cs.Spec.Agent.Backend.Default()
@@ -108,16 +101,11 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			if tb.StaticVMID == "" {
 				errs = append(errs, path+".staticVMID is required when mode=static")
 			}
-			if msg := validateConnType(path, tb.ConnType); msg != "" {
-				errs = append(errs, msg)
-			}
+			errs = appendMsgs(errs, validateConnType(path, tb.ConnType))
 			continue
 		}
 
-		vmName := meta.VMNameForPod(cs.Namespace, cs.Name+"-"+tb.Name)
-		if msg := vmNameLengthError(path, vmName, tb.OS); msg != "" {
-			errs = append(errs, msg)
-		}
+		errs = appendMsgs(errs, vmNameLengthError(path, meta.VMNameForPod(cs.Namespace, meta.ToolboxPodName(cs.Name, tb.Name)), tb.OS))
 		if tb.Image == "" {
 			errs = append(errs, path+".image is required when mode is run or clone")
 		}
@@ -126,12 +114,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			errs = append(errs, fmt.Sprintf("%s.backend %q must match spec.agent.backend %q", path, tb.Backend.Default(), agentBackend))
 		}
 		tbMode := string(tb.Mode.Default())
-		if msg := firecrackerModeError(path, tb.Backend, tbMode); msg != "" {
-			errs = append(errs, msg)
-		}
-		if msg := cloneImageError(path, tbMode, tb.Image); msg != "" {
-			errs = append(errs, msg)
-		}
+		errs = appendMsgs(errs, firecrackerModeError(path, tb.Backend, tbMode), cloneImageError(path, tbMode, tb.Image))
 	}
 
 	if cs.Spec.SnapshotPolicy != "" && !cs.Spec.SnapshotPolicy.IsValid() {
@@ -163,9 +146,7 @@ func validateVMOptions(path string, opts cocoonv1.VMOptions, image string) []str
 	if opts.OS != "" && !opts.OS.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.os must be linux, windows, android, or macos, got %q", path, opts.OS))
 	}
-	if msg := validateConnType(path, opts.ConnType); msg != "" {
-		errs = append(errs, msg)
-	}
+	errs = appendMsgs(errs, validateConnType(path, opts.ConnType))
 	if opts.Backend != "" && !opts.Backend.IsValid() {
 		errs = append(errs, fmt.Sprintf("%s.backend must be cloud-hypervisor or firecracker, got %q", path, opts.Backend))
 	}
@@ -204,4 +185,13 @@ func firecrackerModeError(path string, backend cocoonv1.Backend, mode string) st
 		return ""
 	}
 	return fmt.Sprintf("%s: firecracker does not support %s mode, use mode=run instead", path, mode)
+}
+
+func appendMsgs(errs []string, msgs ...string) []string {
+	for _, msg := range msgs {
+		if msg != "" {
+			errs = append(errs, msg)
+		}
+	}
+	return errs
 }

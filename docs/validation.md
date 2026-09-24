@@ -20,7 +20,7 @@ validation cannot express:
 - `spec.toolboxes[*]` static mode requires both `staticIP` and `staticVMID`
 - `spec.toolboxes[*]` non-static modes require `image`, and get the same `os`/`connType`/`backend` enum checks and firecracker-Windows/cloudimg-URL rules as `spec.agent`
 - `spec.toolboxes[*].backend` must match `spec.agent.backend` (static toolboxes skip this check)
-- `spec.toolboxes[*]` static-mode entries: `connType` may be left unset (falls back to OS-based inference: Linux→ssh, Windows→rdp, Android→adb); a non-empty value must be one of `ssh` / `rdp` / `vnc` / `adb`
+- `spec.toolboxes[*]` static-mode entries: `connType` may be left unset (falls back to `vnc` when `vncPort` is set, otherwise by OS: Windows→rdp, Android→adb, anything else→ssh); a non-empty value must be one of `ssh` / `rdp` / `vnc` / `adb`
 - clone-mode images (`spec.agent.image`, `spec.toolboxes[*].image`) must be a relative `repo[:tag]` with a lowercase repo path — a registry port, a digest, and uppercase repo characters are rejected (a bare registry host such as `ghcr.io/...` is accepted; the tag keeps the OCI tag character set), because the snapshot pull path resolves images under the org registry base and has no external-ref fallback
 - `spec.snapshotPolicy ∈ {always, main-only, never}`
 - `spec.hibernatePolicy ∈ {retain, release}`
@@ -34,16 +34,18 @@ whole 63 characters.
 This also leaves room for the shorter `fork-` snapshot prefix. Validation uses
 the naming functions from cocoon-common:
 
-- Agents use `vk-<namespace>.<cocoonset>-<slot>`. The main agent occupies slot 0;
-  `spec.agent.replicas` counts additional agents in slots 1 through that value.
-  The validator checks the largest slot, including its decimal digit count.
-- Non-static toolboxes use `vk-<namespace>.<cocoonset>-<toolbox-name>` and have
-  the same budget. Static toolboxes use external VMs and skip this local VM
+- Agents use `vk-<namespace>-<cocoonset>-<slot>-<hash>`, where `<hash>` is six
+  hex digits derived from the namespace and pod name; dots in the CocoonSet name
+  become dashes. The main agent occupies slot 0; `spec.agent.replicas` counts
+  additional agents in slots 1 through that value. The validator checks the
+  largest slot, including its decimal digit count.
+- Non-static toolboxes use `vk-<namespace>-<cocoonset>-<toolbox-name>-<hash>` and
+  have the same budget. Static toolboxes use external VMs and skip this local VM
   name check; their existing name and connection checks still apply.
 
-For example, in namespace `default`, a 33-character CocoonSet name fits with
-slots 0 through 9. A 34-character name is rejected even with zero sub-agents;
-scaling the 33-character name to 10 sub-agents is also rejected. Shorten the
+For example, in namespace `default`, a 26-character CocoonSet name fits with
+slots 0 through 9. A 27-character name is rejected even with zero sub-agents;
+scaling the 26-character name to 10 sub-agents is also rejected. Shorten the
 CocoonSet or toolbox name, or use a shorter namespace. Names are not truncated
 or rewritten, and this check does not rename existing resources.
 
