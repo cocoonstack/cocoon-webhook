@@ -20,7 +20,7 @@ import (
 
 const (
 	maxVMNameLength        = 63
-	maxManagedVMNameLength = maxVMNameLength - len("-hibernate-import")
+	maxManagedVMNameLength = maxVMNameLength - len(meta.HibernateImportSuffix)
 )
 
 func (s *Server) validateCocoonSet(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
@@ -105,7 +105,7 @@ func validateCocoonSetSpec(cs *cocoonv1.CocoonSet) []string {
 			continue
 		}
 
-		errs = appendMsgs(errs, vmNameLengthError(path, meta.VMNameForPod(cs.Namespace, cs.Name+"-"+tb.Name), tb.OS))
+		errs = appendMsgs(errs, vmNameLengthError(path, meta.VMNameForPod(cs.Namespace, meta.ToolboxPodName(cs.Name, tb.Name)), tb.OS))
 		if tb.Image == "" {
 			errs = append(errs, path+".image is required when mode is run or clone")
 		}
