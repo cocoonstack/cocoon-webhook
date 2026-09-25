@@ -4,7 +4,9 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net/http"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -35,10 +37,11 @@ const (
 
 func main() {
 	ctx := context.Background()
-	logger := log.WithFunc("main")
 	if err := commonlog.Setup(ctx, "WEBHOOK_LOG_LEVEL"); err != nil {
-		logger.Fatalf(ctx, err, "setup log")
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
+	logger := log.WithFunc("main")
 
 	prometheus.MustRegister(metrics.AdmissionTotal)
 
