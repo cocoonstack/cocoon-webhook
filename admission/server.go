@@ -24,8 +24,7 @@ type Server struct {
 	podCreators []string
 }
 
-// NewServer creates an admission Server; dyn reads CocoonHibernation CRs,
-// podCreators lists the usernames allowed to create cocoon pods.
+// NewServer creates an admission Server; dyn reads CocoonHibernation CRs and podCreators may create cocoon pods.
 func NewServer(client kubernetes.Interface, dyn dynamic.Interface, podCreators []string) *Server {
 	return &Server{client: client, dyn: dyn, podCreators: podCreators}
 }
