@@ -43,8 +43,7 @@ func (r *Reloader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate,
 	return r.cert, nil
 }
 
-// load stats before reading so a rotation racing the read is caught by the
-// next mtime check instead of being masked by a post-read timestamp.
+// load stats before reading so the next mtime check catches a rotation that races the read.
 func (r *Reloader) load() error {
 	mtimes := r.statMTimes()
 	cert, err := tls.LoadX509KeyPair(r.certFile, r.keyFile)
@@ -64,8 +63,7 @@ func (r *Reloader) mtimeChanged() bool {
 	r.mu.RUnlock()
 	current := r.statMTimes()
 	for i, mtime := range current {
-		// Zero mtime means a stat error (e.g. mid-rotation swap): keep the
-		// stale cert and let a later handshake retry.
+		// A zero mtime is a stat error mid-rotation: keep the stale cert and let a later handshake retry.
 		if !mtime.IsZero() && !mtime.Equal(loaded[i]) {
 			return true
 		}
