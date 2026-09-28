@@ -47,11 +47,26 @@ func TestValidateCocoonSetSpec(t *testing.T) {
 			wantContains: []string{"agent.mode"},
 		},
 		{
-			name: "rejects clone-mode digest image",
+			name: "rejects clone-mode malformed digest image",
 			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
 				Agent: cocoonv1.AgentSpec{Image: "ubuntu@sha256:deadbeef"},
 			}},
 			wantContains: []string{"spec.agent.image", "must be repo[:tag]"},
+		},
+		{
+			name: "accepts clone-mode digest image",
+			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+				Agent: cocoonv1.AgentSpec{Image: "simular/ubuntu@sha256:" + strings.Repeat("ab", 32)},
+			}},
+		},
+		{
+			name: "accepts clone-mode toolbox digest image",
+			cs: &cocoonv1.CocoonSet{Spec: cocoonv1.CocoonSetSpec{
+				Agent: cocoonv1.AgentSpec{Image: "x"},
+				Toolboxes: []cocoonv1.ToolboxSpec{
+					{Name: "tb", Mode: cocoonv1.ToolboxModeClone, Image: "tools@sha256:" + strings.Repeat("cd", 32)},
+				},
+			}},
 		},
 		{
 			name: "rejects clone-mode registry-port image",

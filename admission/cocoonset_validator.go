@@ -171,12 +171,12 @@ func validateConnType(path string, ct cocoonv1.ConnType) string {
 	return fmt.Sprintf("%s.connType must be ssh, rdp, vnc, or adb, got %q", path, ct)
 }
 
-// cloneImageError rejects clone-mode images ParseRef cannot split: the snapshot pull joins repo[:tag] under a fixed registry base.
+// cloneImageError rejects clone-mode images ParseRef cannot split: the snapshot pull joins repo[:tag] or repo@digest under a fixed registry base.
 func cloneImageError(path, mode, image string) string {
 	if mode != string(cocoonv1.AgentModeClone) || image == "" || ociutil.IsRelativeRef(image) {
 		return ""
 	}
-	return fmt.Sprintf("%s.image %q must be repo[:tag] when mode is clone (no registry port or digest)", path, image)
+	return fmt.Sprintf("%s.image %q must be repo[:tag] or repo@sha256:<digest> when mode is clone (no registry port)", path, image)
 }
 
 // firecrackerModeError rejects firecracker with mode != run: an FC restore freezes the guest MAC+IP, so clones land on a dead lease.
